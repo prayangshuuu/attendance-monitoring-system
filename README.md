@@ -6,8 +6,10 @@ Backend API service for course attendance monitoring and tracking.
 
 ## Features
 - FastAPI asynchronous application architecture
-- Configurable environment-based settings
-- Health check endpoint
+- Typed configuration via Pydantic v2 settings
+- Async SQLAlchemy 2.0 database session and declarative base
+- Alembic async database migrations
+- Health check endpoint with database probe
 
 ## Quick Start
 
@@ -21,7 +23,12 @@ uv sync
 cp .env.example .env
 ```
 
-3. Run the development server:
+3. Run database migrations:
+```bash
+uv run alembic upgrade head
+```
+
+4. Run the development server:
 ```bash
 uv run uvicorn app.main:app --reload
 ```
