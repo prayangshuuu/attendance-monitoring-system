@@ -1,12 +1,14 @@
-from typing import Annotated
+from collections.abc import Callable, Coroutine
+from typing import Annotated, Any
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthenticationError
+from app.core.exceptions import AuthenticationError, PermissionDeniedError
 from app.core.security import decode_token
 from app.db.session import get_db
+from app.models.enums import UserRole
 from app.models.user import User
 from app.repositories.user_repository import user_repository
 
@@ -40,3 +42,25 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_roles(
+    *roles: UserRole | str,
+) -> Callable[..., Coroutine[Any, Any, User]]:
+    allowed_roles = {r.value if isinstance(r, UserRole) else str(r) for r in roles}
+
+    async def role_checker(
+        current_user: CurrentUser,
+    ) -> User:
+        if current_user.role not in allowed_roles:
+            raise PermissionDeniedError(
+                f"Operation not permitted for role: {current_user.role}",
+                code="PERMISSION_DENIED",
+            )
+        return current_user
+
+    return role_checker
+
+
+AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN))]
+TeacherOrAdmin = Annotated[User, Depends(require_roles(UserRole.ADMIN, UserRole.TEACHER))]

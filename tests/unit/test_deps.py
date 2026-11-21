@@ -5,8 +5,8 @@ import pytest
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
-from app.core.exceptions import AuthenticationError
+from app.api.deps import get_current_user, require_roles
+from app.core.exceptions import AuthenticationError, PermissionDeniedError
 from app.core.security import create_access_token
 from app.models.enums import UserRole
 from tests.factories import make_user
@@ -66,3 +66,18 @@ async def test_get_current_user_success(db_session: AsyncSession) -> None:
 
     current_user = await get_current_user(db_session, credentials)
     assert current_user.id == user.id
+
+
+@pytest.mark.asyncio
+async def test_require_roles_checker(db_session: AsyncSession) -> None:
+    student = await make_user(db_session, role=UserRole.STUDENT)
+    admin = await make_user(db_session, role=UserRole.ADMIN)
+
+    admin_guard = require_roles(UserRole.ADMIN)
+
+    with pytest.raises(PermissionDeniedError) as exc_info:
+        await admin_guard(student)
+    assert exc_info.value.code == "PERMISSION_DENIED"
+
+    allowed = await admin_guard(admin)
+    assert allowed.id == admin.id
