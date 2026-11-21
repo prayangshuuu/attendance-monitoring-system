@@ -219,3 +219,94 @@ async def test_delete_course_endpoint(
     res_get = await client.get(f"/api/v1/courses/{course.id}", headers=auth_headers(admin_user))
     assert res_get.status_code == 200
     assert res_get.json()["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_enrollments_endpoints(
+    client: AsyncClient,
+    admin_user: User,
+    teacher_user: User,
+    student_user: User,
+    db_session: AsyncSession,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    course = await make_course(db_session, teacher=teacher_user, code="ENR_C1")
+    s2 = await make_user(db_session, role=UserRole.STUDENT)
+    other_teacher = await make_user(db_session, role=UserRole.TEACHER)
+
+    # 1. Other teacher cannot enroll -> 403
+    res = await client.post(
+        f"/api/v1/courses/{course.id}/enrollments",
+        headers=auth_headers(other_teacher),
+        json={"student_ids": [str(student_user.id)]},
+    )
+    assert res.status_code == 403
+
+    # 2. Teacher enrolls student_user and s2 -> 200
+    res = await client.post(
+        f"/api/v1/courses/{course.id}/enrollments",
+        headers=auth_headers(teacher_user),
+        json={"student_ids": [str(student_user.id), str(s2.id)]},
+    )
+    assert res.status_code in (200, 201)
+    data = res.json()
+    assert str(student_user.id) in data["enrolled"]
+    assert str(s2.id) in data["enrolled"]
+    assert len(data["skipped"]) == 0
+
+    # 3. Admin enrolls student_user again -> student_user skipped
+    res_skip = await client.post(
+        f"/api/v1/courses/{course.id}/enrollments",
+        headers=auth_headers(admin_user),
+        json={"student_ids": [str(student_user.id)]},
+    )
+    assert res_skip.status_code in (200, 201)
+    skip_data = res_skip.json()
+    assert str(student_user.id) in skip_data["skipped"]
+    assert len(skip_data["enrolled"]) == 0
+
+    # 4. List enrolled students
+    # Student cannot list -> 403
+    res_s_list = await client.get(
+        f"/api/v1/courses/{course.id}/students", headers=auth_headers(student_user)
+    )
+    assert res_s_list.status_code == 403
+
+    # Teacher can list -> 200
+    res_t_list = await client.get(
+        f"/api/v1/courses/{course.id}/students", headers=auth_headers(teacher_user)
+    )
+    assert res_t_list.status_code == 200
+    students_data = res_t_list.json()
+    assert students_data["total"] == 2
+    student_ids = [s["id"] for s in students_data["items"]]
+    assert str(student_user.id) in student_ids
+    assert str(s2.id) in student_ids
+
+    # 5. Unenroll student
+    # Other teacher cannot unenroll -> 403
+    res_un_denied = await client.delete(
+        f"/api/v1/courses/{course.id}/enrollments/{student_user.id}",
+        headers=auth_headers(other_teacher),
+    )
+    assert res_un_denied.status_code == 403
+
+    # Course teacher can unenroll -> 204
+    res_un = await client.delete(
+        f"/api/v1/courses/{course.id}/enrollments/{student_user.id}",
+        headers=auth_headers(teacher_user),
+    )
+    assert res_un.status_code == 204
+
+    # Check list now has total 1
+    res_t_list2 = await client.get(
+        f"/api/v1/courses/{course.id}/students", headers=auth_headers(teacher_user)
+    )
+    assert res_t_list2.json()["total"] == 1
+
+    # Unenroll again -> 404
+    res_un_again = await client.delete(
+        f"/api/v1/courses/{course.id}/enrollments/{student_user.id}",
+        headers=auth_headers(teacher_user),
+    )
+    assert res_un_again.status_code == 404

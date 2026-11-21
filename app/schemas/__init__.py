@@ -7,6 +7,7 @@ from app.schemas.course import (
     CourseTeacherSummary,
     CourseUpdate,
 )
+from app.schemas.enrollment import EnrollmentCreate, EnrollmentRead, EnrollmentResult
 from app.schemas.user import PasswordChange, UserCreate, UserRead, UserResponse, UserUpdate
 
 __all__ = [
@@ -15,6 +16,9 @@ __all__ = [
     "CourseResponse",
     "CourseTeacherSummary",
     "CourseUpdate",
+    "EnrollmentCreate",
+    "EnrollmentRead",
+    "EnrollmentResult",
     "LoginRequest",
     "Page",
     "PaginationParams",

@@ -7,7 +7,10 @@ from app.api.deps import AdminUser, CurrentUser, DbSession
 from app.models.course import Course
 from app.schemas.common import Page, PaginationParams
 from app.schemas.course import CourseCreate, CourseRead, CourseUpdate
+from app.schemas.enrollment import EnrollmentCreate, EnrollmentResult
+from app.schemas.user import UserRead
 from app.services.course_service import course_service
+from app.services.enrollment_service import enrollment_service
 
 router = APIRouter()
 
@@ -89,3 +92,63 @@ async def delete_course(
     db: DbSession,
 ) -> None:
     await course_service.deactivate_course(session=db, course_id=id)
+
+
+@router.post(
+    "/{id}/enrollments",
+    response_model=EnrollmentResult,
+    status_code=status.HTTP_200_OK,
+    summary="Enroll students in a course (admin or course teacher)",
+)
+async def enroll_students(
+    id: UUID,
+    data: EnrollmentCreate,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> EnrollmentResult:
+    return await enrollment_service.enroll_students(
+        session=db,
+        course_id=id,
+        student_ids=data.student_ids,
+        current_user=current_user,
+    )
+
+
+@router.get(
+    "/{id}/students",
+    response_model=Page[UserRead],
+    status_code=status.HTTP_200_OK,
+    summary="List students enrolled in a course (admin or course teacher)",
+)
+async def list_course_students(
+    id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    pagination: Annotated[PaginationParams, Depends()],
+) -> Page[UserRead]:
+    return await enrollment_service.list_course_students(
+        session=db,
+        course_id=id,
+        current_user=current_user,
+        page=pagination.page,
+        size=pagination.size,
+    )
+
+
+@router.delete(
+    "/{id}/enrollments/{student_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Unenroll a student from a course (admin or course teacher)",
+)
+async def unenroll_student(
+    id: UUID,
+    student_id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> None:
+    await enrollment_service.unenroll(
+        session=db,
+        course_id=id,
+        student_id=student_id,
+        current_user=current_user,
+    )
