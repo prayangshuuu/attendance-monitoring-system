@@ -11,6 +11,7 @@ Backend API service for course attendance monitoring and tracking.
 - Role-based authorization (`admin`, `teacher`, `student`)
 - User management (admin CRUD, pagination, ILIKE search, self password change, atomic bulk CSV import)
 - Courses & enrollments (course CRUD, teacher assignment, student enrollment, ownership access control)
+- Class sessions (scheduling, recurring, open/close)
 - Typed configuration via Pydantic v2 settings
 - Async SQLAlchemy 2.0 database session and declarative base
 - Alembic async database migrations

@@ -8,6 +8,15 @@ from app.schemas.course import (
     CourseUpdate,
 )
 from app.schemas.enrollment import EnrollmentCreate, EnrollmentRead, EnrollmentResult
+from app.schemas.session import (
+    RecurringSessionCreate,
+    RecurringSessionResult,
+    SessionCreate,
+    SessionOpenResponse,
+    SessionRead,
+    SessionResponse,
+    SessionUpdate,
+)
 from app.schemas.user import PasswordChange, UserCreate, UserRead, UserResponse, UserUpdate
 
 __all__ = [
@@ -24,6 +33,13 @@ __all__ = [
     "PaginationParams",
     "PasswordChange",
     "RefreshTokenRequest",
+    "RecurringSessionCreate",
+    "RecurringSessionResult",
+    "SessionCreate",
+    "SessionOpenResponse",
+    "SessionRead",
+    "SessionResponse",
+    "SessionUpdate",
     "TokenResponse",
     "UserCreate",
     "UserRead",

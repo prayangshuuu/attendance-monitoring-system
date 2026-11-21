@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, UUIDPkMixin
+from app.db.base import Base, TimestampMixin, UUIDPkMixin
 from app.models.enums import SessionStatus
 
 if TYPE_CHECKING:
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from app.models.course import Course
 
 
-class ClassSession(Base, UUIDPkMixin):
+class ClassSession(Base, UUIDPkMixin, TimestampMixin):
     __tablename__ = "class_sessions"
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ends_at_after_starts_at"),

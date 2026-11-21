@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.models.enums import UserRole
 from app.models.user import User
 from app.repositories.user_repository import user_repository
+from app.utils.clock import Clock, get_clock
 
 http_bearer = HTTPBearer(auto_error=False)
 
@@ -64,3 +65,4 @@ def require_roles(
 
 AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN))]
 TeacherOrAdmin = Annotated[User, Depends(require_roles(UserRole.ADMIN, UserRole.TEACHER))]
+ClockDep = Annotated[Clock, Depends(get_clock)]

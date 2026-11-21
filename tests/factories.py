@@ -115,6 +115,7 @@ async def make_session(
     )
     db.add(class_session)
     await db.flush()
+    await db.refresh(class_session)
     return class_session
 
 
