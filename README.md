@@ -6,10 +6,22 @@ Backend API service for course attendance monitoring and tracking.
 
 ## Features
 - FastAPI asynchronous application architecture
+- JWT authentication with access token & refresh token rotation
+- Argon2 password hashing via pwdlib
+- Role-based authorization (`admin`, `teacher`, `student`)
 - Typed configuration via Pydantic v2 settings
 - Async SQLAlchemy 2.0 database session and declarative base
 - Alembic async database migrations
 - Health check endpoint with database probe
+
+## Auth
+- Login endpoint: `POST /api/v1/auth/login` returning access and refresh tokens.
+- Authentication header: `Authorization: Bearer <access_token>` on protected routes.
+
+## Create Admin
+```bash
+uv run python scripts/create_admin.py
+```
 
 ## Data Model
 - `User`: System accounts with roles (`admin`, `teacher`, `student`), credentials, and optional student identifier.

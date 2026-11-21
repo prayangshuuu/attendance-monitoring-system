@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import hash_password
 from app.models.attendance_record import AttendanceRecord
 from app.models.class_session import ClassSession
 from app.models.course import Course
@@ -16,16 +17,22 @@ async def make_user(
     db: AsyncSession,
     email: str | None = None,
     full_name: str = "Test User",
-    hashed_password: str = "hashed_secret_password",
+    hashed_password: str | None = None,
     role: str = UserRole.STUDENT,
     student_id: str | None = None,
     is_active: bool = True,
+    password: str | None = None,
     **kwargs: Any,
 ) -> User:
     if email is None:
         email = f"user_{uuid.uuid4().hex[:8]}@example.com"
     if student_id is None and role == UserRole.STUDENT and "student_id" not in kwargs:
         student_id = f"STU_{uuid.uuid4().hex[:8]}"
+
+    if password is not None:
+        hashed_password = hash_password(password)
+    elif hashed_password is None:
+        hashed_password = "hashed_secret_password"
 
     user = User(
         email=email.lower(),
