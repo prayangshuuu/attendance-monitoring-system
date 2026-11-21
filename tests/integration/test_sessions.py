@@ -180,44 +180,50 @@ async def test_get_and_list_sessions_endpoint(
     await make_enrollment(db_session, course=course, student=student_user)
 
     now = datetime.now(UTC)
-    s_sched = await make_session(
+    s_open = await make_session(
         db_session,
         course=course,
         starts_at=now,
         ends_at=now + timedelta(hours=1),
-        status=SessionStatus.SCHEDULED.value,
+        status=SessionStatus.OPEN.value,
+        checkin_code="K9X7P2",
+        code_expires_at=now + timedelta(minutes=15),
     )
 
     # 1. GET /sessions/{id}
     # Non-enrolled student -> 403
     res = await client.get(
-        f"/api/v1/sessions/{s_sched.id}",
+        f"/api/v1/sessions/{s_open.id}",
         headers=auth_headers(other_student),
     )
     assert res.status_code == 403
 
     # Non-owner teacher -> 403
     res = await client.get(
-        f"/api/v1/sessions/{s_sched.id}",
+        f"/api/v1/sessions/{s_open.id}",
         headers=auth_headers(other_teacher),
     )
     assert res.status_code == 403
 
-    # Enrolled student -> 200
+    # Enrolled student -> 200 with masked checkin_code
     res = await client.get(
-        f"/api/v1/sessions/{s_sched.id}",
+        f"/api/v1/sessions/{s_open.id}",
         headers=auth_headers(student_user),
     )
     assert res.status_code == 200
     data = res.json()
-    assert data["id"] == str(s_sched.id)
+    assert data["id"] == str(s_open.id)
+    assert data["checkin_code"] is None
+    assert data["code_expires_at"] is None
 
-    # Teacher -> 200
+    # Teacher -> 200 with visible checkin_code
     res = await client.get(
-        f"/api/v1/sessions/{s_sched.id}",
+        f"/api/v1/sessions/{s_open.id}",
         headers=auth_headers(teacher_user),
     )
     assert res.status_code == 200
+    assert res.json()["checkin_code"] == "K9X7P2"
+    assert res.json()["code_expires_at"] is not None
 
     # Session not found -> 404
     res = await client.get(
@@ -239,12 +245,21 @@ async def test_get_and_list_sessions_endpoint(
     to_iso = (now + timedelta(hours=2)).isoformat()
     res = await client.get(
         f"/api/v1/courses/{course.id}/sessions",
-        params={"status": "scheduled", "from": from_iso, "to": to_iso},
+        params={"status": "open", "from": from_iso, "to": to_iso},
         headers=auth_headers(teacher_user),
     )
     assert res.status_code == 200
     list_data = res.json()
     assert list_data["total"] == 1
+    assert list_data["items"][0]["checkin_code"] == "K9X7P2"
+
+    # Student listing -> checkin_code masked
+    res = await client.get(
+        f"/api/v1/courses/{course.id}/sessions",
+        headers=auth_headers(student_user),
+    )
+    assert res.status_code == 200
+    assert res.json()["items"][0]["checkin_code"] is None
 
 
 @pytest.mark.asyncio
@@ -274,3 +289,98 @@ async def test_update_session_endpoint(
     )
     assert res.status_code == 200
     assert res.json()["late_after_minutes"] == 25
+
+
+@pytest.mark.asyncio
+async def test_session_lifecycle_endpoints(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    teacher_user: User,
+    student_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    other_teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher_user)
+    s = await make_session(db_session, course=course, status=SessionStatus.SCHEDULED.value)
+
+    # 1. Open session
+    # Non-owner teacher -> 403
+    res = await client.post(
+        f"/api/v1/sessions/{s.id}/open",
+        headers=auth_headers(other_teacher),
+    )
+    assert res.status_code == 403
+
+    # Student -> 403
+    res = await client.post(
+        f"/api/v1/sessions/{s.id}/open",
+        headers=auth_headers(student_user),
+    )
+    assert res.status_code == 403
+
+    # Teacher opens -> 200 SessionOpenResponse
+    res = await client.post(
+        f"/api/v1/sessions/{s.id}/open",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 200
+    open_data = res.json()
+    assert open_data["status"] == "open"
+    code1 = open_data["checkin_code"]
+    assert len(code1) == 6
+
+    # Open again -> 409 (invalid transition)
+    res = await client.post(
+        f"/api/v1/sessions/{s.id}/open",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 409
+    assert res.json()["error"]["code"] == "INVALID_SESSION_TRANSITION"
+
+    # 2. Regenerate code
+    res = await client.post(
+        f"/api/v1/sessions/{s.id}/regenerate-code",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 200
+    regen_data = res.json()
+    assert regen_data["status"] == "open"
+    code2 = regen_data["checkin_code"]
+    assert code2 != code1
+
+    # 3. Close session
+    res = await client.post(
+        f"/api/v1/sessions/{s.id}/close",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 200
+    close_data = res.json()
+    assert close_data["status"] == "closed"
+    assert close_data["checkin_code"] is None
+    assert close_data["code_expires_at"] is None
+
+    # Regenerate code on closed session -> 409
+    res = await client.post(
+        f"/api/v1/sessions/{s.id}/regenerate-code",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 409
+    assert res.json()["error"]["code"] == "INVALID_SESSION_STATUS"
+
+    # 4. Cancel session
+    s2 = await make_session(db_session, course=course, status=SessionStatus.SCHEDULED.value)
+    res = await client.post(
+        f"/api/v1/sessions/{s2.id}/cancel",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 200
+    cancel_data = res.json()
+    assert cancel_data["status"] == "cancelled"
+
+    # Cancel closed session -> 409
+    res = await client.post(
+        f"/api/v1/sessions/{s.id}/cancel",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 409
+    assert res.json()["error"]["code"] == "INVALID_SESSION_TRANSITION"

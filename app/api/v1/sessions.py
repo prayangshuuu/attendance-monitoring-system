@@ -10,6 +10,7 @@ from app.schemas.session import (
     RecurringSessionCreate,
     RecurringSessionResult,
     SessionCreate,
+    SessionOpenResponse,
     SessionRead,
     SessionUpdate,
     TzAwareDatetime,
@@ -134,5 +135,85 @@ async def update_session(
         session_id=id,
         current_user=current_user,
         data=data,
+        clock=clock,
+    )
+
+
+@router.post(
+    "/sessions/{id}/open",
+    response_model=SessionOpenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Open a scheduled class session",
+)
+async def open_session(
+    id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    clock: ClockDep,
+) -> SessionOpenResponse:
+    return await session_service.open_session(
+        session=db,
+        session_id=id,
+        current_user=current_user,
+        clock=clock,
+    )
+
+
+@router.post(
+    "/sessions/{id}/regenerate-code",
+    response_model=SessionOpenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Regenerate check-in code for an open class session",
+)
+async def regenerate_code(
+    id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    clock: ClockDep,
+) -> SessionOpenResponse:
+    return await session_service.regenerate_code(
+        session=db,
+        session_id=id,
+        current_user=current_user,
+        clock=clock,
+    )
+
+
+@router.post(
+    "/sessions/{id}/close",
+    response_model=SessionRead,
+    status_code=status.HTTP_200_OK,
+    summary="Close an open class session",
+)
+async def close_session(
+    id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    clock: ClockDep,
+) -> SessionRead:
+    return await session_service.close_session(
+        session=db,
+        session_id=id,
+        current_user=current_user,
+        clock=clock,
+    )
+
+
+@router.post(
+    "/sessions/{id}/cancel",
+    response_model=SessionRead,
+    status_code=status.HTTP_200_OK,
+    summary="Cancel a scheduled class session",
+)
+async def cancel_session(
+    id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    clock: ClockDep,
+) -> SessionRead:
+    return await session_service.cancel_session(
+        session=db,
+        session_id=id,
+        current_user=current_user,
         clock=clock,
     )

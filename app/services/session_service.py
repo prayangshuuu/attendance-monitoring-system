@@ -1,9 +1,11 @@
+import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
 from app.models.class_session import ClassSession
 from app.models.course import Course
@@ -17,12 +19,54 @@ from app.schemas.session import (
     RecurringSessionCreate,
     RecurringSessionResult,
     SessionCreate,
+    SessionOpenResponse,
     SessionRead,
     SessionUpdate,
     ensure_utc_datetime,
 )
 from app.services.permissions import ensure_can_manage_course, ensure_can_view_course
-from app.utils.clock import Clock
+from app.utils.clock import Clock, SystemClock
+
+ALLOWED_TRANSITIONS: dict[SessionStatus, set[SessionStatus]] = {
+    SessionStatus.SCHEDULED: {SessionStatus.OPEN, SessionStatus.CANCELLED},
+    SessionStatus.OPEN: {SessionStatus.CLOSED},
+    SessionStatus.CLOSED: set(),
+    SessionStatus.CANCELLED: set(),
+}
+
+CHECKIN_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def generate_checkin_code(length: int = 6) -> str:
+    """Generate a random alphanumeric check-in code excluding ambiguous characters."""
+    return "".join(secrets.choice(CHECKIN_CODE_ALPHABET) for _ in range(length))
+
+
+def validate_transition(current_status: SessionStatus, new_status: SessionStatus) -> None:
+    """Validate that transition from current_status to new_status is allowed."""
+    allowed = ALLOWED_TRANSITIONS.get(current_status, set())
+    if new_status not in allowed:
+        raise ConflictError(
+            f"Cannot transition session from {current_status} to {new_status}",
+            code="INVALID_SESSION_TRANSITION",
+        )
+
+
+async def on_session_closed(session: AsyncSession, class_session: ClassSession) -> None:
+    """Hook invoked when a class session transitions to CLOSED.
+
+    Auto-absent marking for enrolled students without records will be implemented in PROMT_8.
+    """
+    pass
+
+
+def mask_session_for_user(class_session: ClassSession, user: User) -> SessionRead:
+    """Convert ClassSession to SessionRead, masking checkin_code and expiration for students."""
+    session_read = SessionRead.model_validate(class_session)
+    if user.role == UserRole.STUDENT:
+        session_read.checkin_code = None
+        session_read.code_expires_at = None
+    return session_read
 
 
 class SessionService:
@@ -131,7 +175,7 @@ class SessionService:
     ) -> SessionRead:
         class_session, course = await self._get_session_or_404(session, session_id)
         await self._ensure_can_view(session, course, current_user)
-        return SessionRead.model_validate(class_session)
+        return mask_session_for_user(class_session, current_user)
 
     async def list_course_sessions(
         self,
@@ -157,7 +201,7 @@ class SessionService:
             to_dt=to_dt,
         )
 
-        items = [SessionRead.model_validate(s) for s in sessions]
+        items = [mask_session_for_user(s, current_user) for s in sessions]
         return Page(items=items, total=total, page=page, size=size)
 
     async def update_session(
@@ -208,6 +252,110 @@ class SessionService:
         class_session.ends_at = new_ends_at
         if data.late_after_minutes is not None:
             class_session.late_after_minutes = data.late_after_minutes
+
+        updated = await session_repository.update(session, class_session)
+        return SessionRead.model_validate(updated)
+
+    async def open_session(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        current_user: User,
+        clock: Clock | None = None,
+    ) -> SessionOpenResponse:
+        class_session, course = await self._get_session_or_404(session, session_id)
+        ensure_can_manage_course(current_user, course)
+
+        validate_transition(SessionStatus(class_session.status), SessionStatus.OPEN)
+
+        active_clock = clock or SystemClock()
+        now_dt = active_clock.now()
+
+        code = generate_checkin_code()
+        code_expires_at = now_dt + timedelta(minutes=settings.CHECKIN_CODE_TTL_MINUTES)
+
+        class_session.status = SessionStatus.OPEN.value
+        class_session.checkin_code = code
+        class_session.code_expires_at = code_expires_at
+
+        updated = await session_repository.update(session, class_session)
+        return SessionOpenResponse(
+            id=updated.id,
+            status=SessionStatus.OPEN,
+            checkin_code=code,
+            code_expires_at=code_expires_at,
+        )
+
+    async def regenerate_code(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        current_user: User,
+        clock: Clock | None = None,
+    ) -> SessionOpenResponse:
+        class_session, course = await self._get_session_or_404(session, session_id)
+        ensure_can_manage_course(current_user, course)
+
+        if class_session.status != SessionStatus.OPEN.value:
+            raise ConflictError(
+                f"Cannot regenerate code for session with status {class_session.status}",
+                code="INVALID_SESSION_STATUS",
+            )
+
+        active_clock = clock or SystemClock()
+        now_dt = active_clock.now()
+
+        new_code = generate_checkin_code()
+        while new_code == class_session.checkin_code:
+            new_code = generate_checkin_code()
+        code_expires_at = now_dt + timedelta(minutes=settings.CHECKIN_CODE_TTL_MINUTES)
+
+        class_session.checkin_code = new_code
+        class_session.code_expires_at = code_expires_at
+
+        updated = await session_repository.update(session, class_session)
+        return SessionOpenResponse(
+            id=updated.id,
+            status=SessionStatus.OPEN,
+            checkin_code=new_code,
+            code_expires_at=code_expires_at,
+        )
+
+    async def close_session(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        current_user: User,
+        clock: Clock | None = None,
+    ) -> SessionRead:
+        class_session, course = await self._get_session_or_404(session, session_id)
+        ensure_can_manage_course(current_user, course)
+
+        validate_transition(SessionStatus(class_session.status), SessionStatus.CLOSED)
+
+        class_session.status = SessionStatus.CLOSED.value
+        class_session.checkin_code = None
+        class_session.code_expires_at = None
+
+        updated = await session_repository.update(session, class_session)
+        await on_session_closed(session, updated)
+        return SessionRead.model_validate(updated)
+
+    async def cancel_session(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        current_user: User,
+        clock: Clock | None = None,
+    ) -> SessionRead:
+        class_session, course = await self._get_session_or_404(session, session_id)
+        ensure_can_manage_course(current_user, course)
+
+        validate_transition(SessionStatus(class_session.status), SessionStatus.CANCELLED)
+
+        class_session.status = SessionStatus.CANCELLED.value
+        class_session.checkin_code = None
+        class_session.code_expires_at = None
 
         updated = await session_repository.update(session, class_session)
         return SessionRead.model_validate(updated)
