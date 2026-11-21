@@ -1,3 +1,4 @@
+import io
 import uuid
 from collections.abc import Callable
 
@@ -402,3 +403,60 @@ async def test_change_password(
         json={"email": user.email, "password": "NewPassword123"},
     )
     assert login_res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csv_import_success_and_login(
+    client: AsyncClient,
+    admin_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    headers = auth_headers(admin_user)
+    csv_content = (
+        "email,full_name,role,student_id,password\n"
+        "csv_api_stu1@example.com,API Student One,student,STU_API_1,Password123\n"
+        "csv_api_tea1@example.com,API Teacher One,teacher,,Password123\n"
+    )
+
+    files = {"file": ("users.csv", io.BytesIO(csv_content.encode("utf-8")), "text/csv")}
+    res = await client.post("/api/v1/users/import", headers=headers, files=files)
+    assert res.status_code == 201
+    data = res.json()
+    assert len(data) == 2
+    assert data[0]["email"] == "csv_api_stu1@example.com"
+    assert data[1]["email"] == "csv_api_tea1@example.com"
+
+    # Verify created users can log in
+    login_res = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "csv_api_stu1@example.com", "password": "Password123"},
+    )
+    assert login_res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csv_import_atomic_rollback_on_failure(
+    client: AsyncClient,
+    admin_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    headers = auth_headers(admin_user)
+    csv_content = (
+        "email,full_name,role,student_id,password\n"
+        "csv_atomic_good@example.com,Good User,student,STU_GOOD_1,Password123\n"
+        "csv_atomic_bad@example.com,Bad User,student,,Password123\n"  # missing student_id
+    )
+
+    files = {"file": ("users.csv", io.BytesIO(csv_content.encode("utf-8")), "text/csv")}
+    res = await client.post("/api/v1/users/import", headers=headers, files=files)
+    assert res.status_code == 400
+    data = res.json()
+    assert data["error"]["code"] == "CSV_IMPORT_ERROR"
+    assert len(data["error"]["details"]["errors"]) >= 1
+
+    # Ensure good user was NOT created (atomic rollback)
+    login_res = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "csv_atomic_good@example.com", "password": "Password123"},
+    )
+    assert login_res.status_code == 401

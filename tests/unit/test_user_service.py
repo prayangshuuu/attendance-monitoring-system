@@ -209,3 +209,76 @@ async def test_user_service_change_password(db_session: AsyncSession) -> None:
     )
     refetched = await user_service.get_user_by_id(db_session, user.id)
     assert verify_password("NewPassword123", refetched.hashed_password)
+
+
+@pytest.mark.asyncio
+async def test_user_service_import_csv_empty(db_session: AsyncSession) -> None:
+    assert await user_service.import_users_csv(db_session, "") == []
+    assert await user_service.import_users_csv(db_session, b"") == []
+    header_only = "email,full_name,role,student_id,password\n"
+    assert await user_service.import_users_csv(db_session, header_only) == []
+
+
+@pytest.mark.asyncio
+async def test_user_service_import_csv_invalid_encoding(db_session: AsyncSession) -> None:
+    with pytest.raises(ValidationAppError) as exc_info:
+        await user_service.import_users_csv(db_session, b"\xff\xfe\x00")
+    assert exc_info.value.code == "CSV_IMPORT_ERROR"
+    assert exc_info.value.details["errors"][0]["field"] == "file"
+
+
+@pytest.mark.asyncio
+async def test_user_service_import_csv_missing_headers(db_session: AsyncSession) -> None:
+    csv_text = "email,full_name,role\ntest@example.com,Test,student"
+    with pytest.raises(ValidationAppError) as exc_info:
+        await user_service.import_users_csv(db_session, csv_text)
+    assert exc_info.value.code == "CSV_IMPORT_ERROR"
+    assert exc_info.value.details["errors"][0]["field"] == "header"
+
+
+@pytest.mark.asyncio
+async def test_user_service_import_csv_validation_errors(db_session: AsyncSession) -> None:
+    existing = await make_user(
+        db_session,
+        email="existing_csv@example.com",
+        student_id="STU_EXISTING",
+    )
+    csv_text = (
+        "email,full_name,role,student_id,password\n"
+        ",Empty Email,student,STU_EMPTY,Password123\n"
+        "bademail,Bad Email,student,STU_1,Password123\n"
+        "s2@example.com,,student,STU_2,Password123\n"
+        "s3@example.com,Valid Name,invalidrole,STU_3,Password123\n"
+        "s4@example.com,Student No ID,student,,Password123\n"
+        "t1@example.com,Teacher With ID,teacher,STU_TEACHER,Password123\n"
+        "s5@example.com,Weak Pwd,student,STU_5,weak\n"
+        "dup@example.com,Dup 1,student,STU_DUP_A,Password123\n"
+        "dup@example.com,Dup 2,student,STU_DUP_B,Password123\n"
+        "s6@example.com,Dup Stu 1,student,STU_SAME,Password123\n"
+        "s7@example.com,Dup Stu 2,student,STU_SAME,Password123\n"
+        f"{existing.email},DB Dup Email,student,STU_UNIQUE_A,Password123\n"
+        f"diff@example.com,DB Dup Stu,student,{existing.student_id},Password123\n"
+    )
+
+    with pytest.raises(ValidationAppError) as exc_info:
+        await user_service.import_users_csv(db_session, csv_text)
+
+    errs = exc_info.value.details["errors"]
+    assert len(errs) >= 10
+
+
+@pytest.mark.asyncio
+async def test_user_service_import_csv_success(db_session: AsyncSession) -> None:
+    csv_text = (
+        "email,full_name,role,student_id,password\n"
+        "csv_s1@example.com,CSV Student One,student,STU_CSV_1,Password123\n"
+        "csv_t1@example.com,CSV Teacher One,teacher,,Password123\n"
+        "csv_a1@example.com,CSV Admin One,admin,,Password123\n"
+    )
+    users = await user_service.import_users_csv(db_session, csv_text)
+    assert len(users) == 3
+    assert users[0].role == UserRole.STUDENT.value
+    assert users[0].student_id == "STU_CSV_1"
+    assert users[1].role == UserRole.TEACHER.value
+    assert users[1].student_id is None
+    assert users[2].role == UserRole.ADMIN.value

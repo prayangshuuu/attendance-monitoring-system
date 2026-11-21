@@ -1,5 +1,9 @@
+import csv
+import io
+from typing import Any
 from uuid import UUID
 
+from pydantic import EmailStr, TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
@@ -8,7 +12,7 @@ from app.models.enums import UserRole
 from app.models.user import User
 from app.repositories.user_repository import UserRepository, user_repository
 from app.schemas.common import Page
-from app.schemas.user import PasswordChange, UserCreate, UserRead, UserUpdate
+from app.schemas.user import PASSWORD_REGEX, PasswordChange, UserCreate, UserRead, UserUpdate
 
 
 class UserService:
@@ -194,6 +198,254 @@ class UserService:
         user.hashed_password = hash_password(data.new_password)
         await self.user_repo.update(session, user)
         await session.commit()
+
+    async def import_users_csv(
+        self,
+        session: AsyncSession,
+        file_content: bytes | str,
+    ) -> list[User]:
+        if isinstance(file_content, bytes):
+            try:
+                content = file_content.decode("utf-8-sig")
+            except UnicodeDecodeError as err:
+                raise ValidationAppError(
+                    "Validation failed on one or more rows",
+                    code="CSV_IMPORT_ERROR",
+                    details={
+                        "errors": [
+                            {
+                                "row": 0,
+                                "field": "file",
+                                "message": "Invalid UTF-8 encoding in CSV file",
+                                "error": "Invalid UTF-8 encoding in CSV file",
+                            }
+                        ]
+                    },
+                ) from err
+        else:
+            content = file_content
+
+        if not content.strip():
+            return []
+
+        reader = csv.DictReader(io.StringIO(content))
+        cleaned_fieldnames = (
+            [f.strip().lower() for f in reader.fieldnames if f] if reader.fieldnames else []
+        )
+        reader.fieldnames = cleaned_fieldnames
+        required_cols = {"email", "full_name", "role", "student_id", "password"}
+        if not required_cols.issubset(set(cleaned_fieldnames)):
+            missing = required_cols - set(cleaned_fieldnames)
+            raise ValidationAppError(
+                "Validation failed on one or more rows",
+                code="CSV_IMPORT_ERROR",
+                details={
+                    "errors": [
+                        {
+                            "row": 0,
+                            "field": "header",
+                            "message": f"Missing required columns: {', '.join(sorted(missing))}",
+                            "error": f"Missing required columns: {', '.join(sorted(missing))}",
+                        }
+                    ]
+                },
+            )
+
+        errors: list[dict[str, Any]] = []
+        seen_emails: set[str] = set()
+        seen_student_ids: set[str] = set()
+        rows_data: list[dict[str, Any]] = []
+
+        rows = list(reader)
+        if not rows:
+            return []
+
+        valid_roles = {r.value for r in UserRole}
+
+        for row_idx, row in enumerate(rows, start=1):
+            email_val = (row.get("email") or "").strip().lower()
+            full_name_val = (row.get("full_name") or "").strip()
+            role_val = (row.get("role") or "").strip().lower()
+            raw_stu_id = (row.get("student_id") or "").strip()
+            student_id_val = raw_stu_id if raw_stu_id else None
+            password_val = (row.get("password") or "").strip()
+
+            row_errors: list[dict[str, Any]] = []
+
+            # 1. Email format
+            if not email_val:
+                row_errors.append(
+                    {
+                        "row": row_idx,
+                        "field": "email",
+                        "message": "Email is required",
+                        "error": "Email is required",
+                    }
+                )
+            else:
+                try:
+                    TypeAdapter(EmailStr).validate_python(email_val)
+                except Exception:
+                    row_errors.append(
+                        {
+                            "row": row_idx,
+                            "field": "email",
+                            "message": f"Invalid email format: '{email_val}'",
+                            "error": f"Invalid email format: '{email_val}'",
+                        }
+                    )
+
+            # 2. Full name
+            if not full_name_val:
+                row_errors.append(
+                    {
+                        "row": row_idx,
+                        "field": "full_name",
+                        "message": "Full name is required",
+                        "error": "Full name is required",
+                    }
+                )
+
+            # 3. Role
+            if role_val not in valid_roles:
+                row_errors.append(
+                    {
+                        "row": row_idx,
+                        "field": "role",
+                        "message": (
+                            f"Invalid role: '{role_val}'. "
+                            f"Must be one of: {', '.join(sorted(valid_roles))}"
+                        ),
+                        "error": f"Invalid role: '{role_val}'",
+                    }
+                )
+
+            # 4. Student ID rule
+            if role_val == UserRole.STUDENT.value:
+                if not student_id_val:
+                    row_errors.append(
+                        {
+                            "row": row_idx,
+                            "field": "student_id",
+                            "message": "student_id is required for student role",
+                            "error": "student_id is required for student role",
+                        }
+                    )
+            else:
+                if student_id_val is not None:
+                    row_errors.append(
+                        {
+                            "row": row_idx,
+                            "field": "student_id",
+                            "message": f"student_id must be empty for {role_val} role",
+                            "error": f"student_id must be empty for {role_val} role",
+                        }
+                    )
+
+            # 5. Password complexity
+            if not password_val or not PASSWORD_REGEX.match(password_val):
+                row_errors.append(
+                    {
+                        "row": row_idx,
+                        "field": "password",
+                        "message": (
+                            "Password must be at least 8 characters long "
+                            "and contain at least one letter and one number"
+                        ),
+                        "error": "Password complexity requirement not met",
+                    }
+                )
+
+            # 6. In-memory duplicates
+            if email_val:
+                if email_val in seen_emails:
+                    row_errors.append(
+                        {
+                            "row": row_idx,
+                            "field": "email",
+                            "message": f"Duplicate email in CSV: '{email_val}'",
+                            "error": f"Duplicate email in CSV: '{email_val}'",
+                        }
+                    )
+                else:
+                    seen_emails.add(email_val)
+
+            if student_id_val:
+                stu_lower = student_id_val.lower()
+                if stu_lower in seen_student_ids:
+                    row_errors.append(
+                        {
+                            "row": row_idx,
+                            "field": "student_id",
+                            "message": f"Duplicate student_id in CSV: '{student_id_val}'",
+                            "error": f"Duplicate student_id in CSV: '{student_id_val}'",
+                        }
+                    )
+                else:
+                    seen_student_ids.add(stu_lower)
+
+            # 7. DB duplicate checks (only if format was valid)
+            if email_val and not any(e["field"] == "email" for e in row_errors):
+                db_user = await self.user_repo.get_by_email(session, email_val)
+                if db_user is not None:
+                    row_errors.append(
+                        {
+                            "row": row_idx,
+                            "field": "email",
+                            "message": f"User with email '{email_val}' already exists",
+                            "error": f"User with email '{email_val}' already exists",
+                        }
+                    )
+
+            if student_id_val and not any(e["field"] == "student_id" for e in row_errors):
+                db_stu = await self.user_repo.get_by_student_id(session, student_id_val)
+                if db_stu is not None:
+                    row_errors.append(
+                        {
+                            "row": row_idx,
+                            "field": "student_id",
+                            "message": f"User with student_id '{student_id_val}' already exists",
+                            "error": f"User with student_id '{student_id_val}' already exists",
+                        }
+                    )
+
+            if row_errors:
+                errors.extend(row_errors)
+            else:
+                rows_data.append(
+                    {
+                        "email": email_val,
+                        "full_name": full_name_val,
+                        "role": role_val,
+                        "student_id": student_id_val,
+                        "password": password_val,
+                    }
+                )
+
+        if errors:
+            await session.rollback()
+            raise ValidationAppError(
+                "Validation failed on one or more rows",
+                code="CSV_IMPORT_ERROR",
+                details={"errors": errors},
+            )
+
+        users_to_create = [
+            User(
+                email=r["email"],
+                full_name=r["full_name"],
+                role=r["role"],
+                student_id=r["student_id"],
+                hashed_password=hash_password(r["password"]),
+                is_active=True,
+            )
+            for r in rows_data
+        ]
+        created = await self.user_repo.create_many(session, users_to_create)
+        await session.commit()
+        for u in created:
+            await session.refresh(u)
+        return created
 
 
 user_service = UserService()

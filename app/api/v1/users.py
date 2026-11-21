@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.api.deps import AdminUser, CurrentUser, DbSession
 from app.core.exceptions import PermissionDeniedError
@@ -65,6 +65,21 @@ async def change_my_password(
     db: DbSession,
 ) -> None:
     await user_service.change_password(session=db, user_id=current_user.id, data=data)
+
+
+@router.post(
+    "/import",
+    response_model=list[UserRead],
+    status_code=status.HTTP_201_CREATED,
+    summary="Bulk import users via CSV file (admin only)",
+)
+async def import_users_csv(
+    _admin: AdminUser,
+    db: DbSession,
+    file: Annotated[UploadFile, File(description="CSV file containing users to import")],
+) -> list[User]:
+    content = await file.read()
+    return await user_service.import_users_csv(session=db, file_content=content)
 
 
 @router.get(
