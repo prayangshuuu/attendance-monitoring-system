@@ -2,6 +2,7 @@ import secrets
 from datetime import timedelta
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,7 @@ from app.core.exceptions import (
     ValidationAppError,
 )
 from app.models.attendance_record import AttendanceRecord
+from app.models.enrollment import Enrollment
 from app.models.enums import AttendanceMethod, AttendanceStatus, SessionStatus
 from app.models.user import User
 from app.repositories.attendance_repository import AttendanceRepository, attendance_repository
@@ -21,9 +23,15 @@ from app.repositories.enrollment_repository import (
     enrollment_repository,
 )
 from app.repositories.session_repository import SessionRepository, session_repository
-from app.schemas.attendance import AttendanceRead
+from app.schemas.attendance import (
+    AttendanceRead,
+    ManualMarkItem,
+    SessionAttendanceRosterItem,
+    SessionAttendanceRosterResponse,
+)
 from app.schemas.common import Page
 from app.schemas.session import ensure_utc_datetime
+from app.services.permissions import ensure_can_manage_course
 from app.utils.clock import Clock, SystemClock
 
 
@@ -120,6 +128,144 @@ class AttendanceService:
                 code="ALREADY_CHECKED_IN",
             ) from None
         return record
+
+    async def bulk_mark(
+        self,
+        session: AsyncSession,
+        teacher: User,
+        session_id: UUID,
+        items: list[ManualMarkItem],
+    ) -> list[AttendanceRecord]:
+        class_session = await self.session_repo.get_by_id(session, session_id)
+        if class_session is None:
+            raise NotFoundError("Session not found", code="SESSION_NOT_FOUND")
+
+        course = await self.course_repo.get_by_id(session, class_session.course_id)
+        if course is None:
+            raise NotFoundError("Course not found", code="COURSE_NOT_FOUND")
+
+        ensure_can_manage_course(teacher, course)
+
+        if not items:
+            return []
+
+        item_student_ids = [item.student_id for item in items]
+        enrolled_ids = await self.enrollment_repo.get_enrolled_student_ids(
+            session, course.id, item_student_ids
+        )
+        for s_id in item_student_ids:
+            if s_id not in enrolled_ids:
+                raise ValidationAppError(
+                    f"Student with id '{s_id}' is not enrolled in this course",
+                    code="STUDENT_NOT_ENROLLED",
+                )
+
+        existing_records = await self.attendance_repo.get_records_for_session(session, session_id)
+        existing_map = {r.student_id: r for r in existing_records}
+
+        result_records: list[AttendanceRecord] = []
+        for item in items:
+            rec = existing_map.get(item.student_id)
+            if rec is not None:
+                rec.status = item.status.value
+                rec.note = item.note
+                rec.marked_by = teacher.id
+                rec.method = AttendanceMethod.MANUAL.value
+                session.add(rec)
+                result_records.append(rec)
+            else:
+                new_rec = AttendanceRecord(
+                    session_id=session_id,
+                    student_id=item.student_id,
+                    status=item.status.value,
+                    note=item.note,
+                    marked_by=teacher.id,
+                    method=AttendanceMethod.MANUAL.value,
+                    checked_in_at=None,
+                )
+                session.add(new_rec)
+                result_records.append(new_rec)
+                existing_map[item.student_id] = new_rec
+
+        await session.commit()
+        for r in result_records:
+            await session.refresh(r)
+        return result_records
+
+    async def update_record(
+        self,
+        session: AsyncSession,
+        teacher: User,
+        record_id: UUID,
+        status: AttendanceStatus,
+        note: str | None = None,
+    ) -> AttendanceRecord:
+        record = await self.attendance_repo.get_by_id(session, record_id)
+        if record is None:
+            raise NotFoundError("Attendance record not found", code="ATTENDANCE_RECORD_NOT_FOUND")
+
+        ensure_can_manage_course(teacher, record.session.course)
+
+        record.status = status.value
+        record.note = note
+        record.marked_by = teacher.id
+        record.method = AttendanceMethod.MANUAL.value
+
+        updated = await self.attendance_repo.update(session, record)
+        await session.commit()
+        await session.refresh(updated)
+        return updated
+
+    async def get_session_roster(
+        self,
+        session: AsyncSession,
+        teacher_or_admin: User,
+        session_id: UUID,
+    ) -> SessionAttendanceRosterResponse:
+        class_session = await self.session_repo.get_by_id(session, session_id)
+        if class_session is None:
+            raise NotFoundError("Session not found", code="SESSION_NOT_FOUND")
+
+        course = await self.course_repo.get_by_id(session, class_session.course_id)
+        if course is None:
+            raise NotFoundError("Course not found", code="COURSE_NOT_FOUND")
+
+        ensure_can_manage_course(teacher_or_admin, course)
+
+        stmt = (
+            select(User)
+            .join(Enrollment, Enrollment.student_id == User.id)
+            .where(Enrollment.course_id == course.id)
+            .order_by(User.full_name.asc(), User.id.asc())
+        )
+        res = await session.execute(stmt)
+        enrolled_students = list(res.scalars().all())
+
+        existing_records = await self.attendance_repo.get_records_for_session(session, session_id)
+        rec_map = {r.student_id: r for r in existing_records}
+
+        roster_items: list[SessionAttendanceRosterItem] = []
+        for student in enrolled_students:
+            rec = rec_map.get(student.id)
+            roster_items.append(
+                SessionAttendanceRosterItem(
+                    student_id=student.id,
+                    student_name=student.full_name,
+                    student_email=student.email,
+                    student_code=student.student_id,
+                    record_id=rec.id if rec else None,
+                    status=AttendanceStatus(rec.status) if rec else None,
+                    checked_in_at=rec.checked_in_at if rec else None,
+                    method=AttendanceMethod(rec.method) if rec else None,
+                    note=rec.note if rec else None,
+                )
+            )
+
+        return SessionAttendanceRosterResponse(
+            session_id=session_id,
+            course_id=course.id,
+            items=roster_items,
+        )
 
     async def list_student_records(
         self,

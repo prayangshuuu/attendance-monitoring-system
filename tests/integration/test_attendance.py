@@ -128,6 +128,147 @@ async def test_check_in_rate_limiting(
 
 
 @pytest.mark.asyncio
+async def test_get_session_attendance_roster(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    teacher_user: User,
+    student_user: User,
+    admin_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    course = await make_course(db_session, teacher=teacher_user)
+    await make_enrollment(db_session, course=course, student=student_user)
+    other_teacher = await make_user(db_session, role=UserRole.TEACHER)
+
+    session_obj = await make_session(db_session, course=course)
+
+    # 1. Student -> 403
+    res = await client.get(
+        f"/api/v1/sessions/{session_obj.id}/attendance",
+        headers=auth_headers(student_user),
+    )
+    assert res.status_code == 403
+
+    # 2. Other teacher -> 403
+    res = await client.get(
+        f"/api/v1/sessions/{session_obj.id}/attendance",
+        headers=auth_headers(other_teacher),
+    )
+    assert res.status_code == 403
+
+    # 3. Course teacher -> 200
+    res = await client.get(
+        f"/api/v1/sessions/{session_obj.id}/attendance",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["session_id"] == str(session_obj.id)
+    assert len(data["items"]) == 1
+    assert data["items"][0]["student_id"] == str(student_user.id)
+    assert data["items"][0]["status"] is None
+
+    # 4. Admin -> 200
+    res = await client.get(
+        f"/api/v1/sessions/{session_obj.id}/attendance",
+        headers=auth_headers(admin_user),
+    )
+    assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_bulk_mark_attendance_endpoint(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    teacher_user: User,
+    student_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    course = await make_course(db_session, teacher=teacher_user)
+    s2 = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=student_user)
+    await make_enrollment(db_session, course=course, student=s2)
+
+    session_obj = await make_session(db_session, course=course)
+
+    payload = {
+        "items": [
+            {"student_id": str(student_user.id), "status": "present", "note": "Attended"},
+            {"student_id": str(s2.id), "status": "late"},
+        ]
+    }
+
+    # 1. Student -> 403
+    res = await client.put(
+        f"/api/v1/sessions/{session_obj.id}/attendance",
+        headers=auth_headers(student_user),
+        json=payload,
+    )
+    assert res.status_code == 403
+
+    # 2. Teacher -> 200
+    res = await client.put(
+        f"/api/v1/sessions/{session_obj.id}/attendance",
+        headers=auth_headers(teacher_user),
+        json=payload,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data) == 2
+    assert {d["status"] for d in data} == {"present", "late"}
+
+    # 3. Non-enrolled student id -> 400 STUDENT_NOT_ENROLLED (atomic, nothing saved)
+    unenrolled_id = str(uuid.uuid4())
+    res_bad = await client.put(
+        f"/api/v1/sessions/{session_obj.id}/attendance",
+        headers=auth_headers(teacher_user),
+        json={"items": [{"student_id": unenrolled_id, "status": "present"}]},
+    )
+    assert res_bad.status_code == 400
+    assert res_bad.json()["error"]["code"] == "STUDENT_NOT_ENROLLED"
+
+
+@pytest.mark.asyncio
+async def test_update_record_endpoint(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    teacher_user: User,
+    student_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    course = await make_course(db_session, teacher=teacher_user)
+    await make_enrollment(db_session, course=course, student=student_user)
+    session_obj = await make_session(db_session, course=course)
+    record = await make_record(
+        db_session,
+        class_session=session_obj,
+        student=student_user,
+        status=AttendanceStatus.ABSENT,
+    )
+
+    update_payload = {"status": "excused", "note": "Sick leave"}
+
+    # 1. Student -> 403
+    res = await client.patch(
+        f"/api/v1/attendance/{record.id}",
+        headers=auth_headers(student_user),
+        json=update_payload,
+    )
+    assert res.status_code == 403
+
+    # 2. Teacher -> 200
+    res = await client.patch(
+        f"/api/v1/attendance/{record.id}",
+        headers=auth_headers(teacher_user),
+        json=update_payload,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == AttendanceStatus.EXCUSED
+    assert data["note"] == "Sick leave"
+
+
+@pytest.mark.asyncio
 async def test_get_my_attendance_endpoint(
     client: AsyncClient,
     db_session: AsyncSession,

@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +16,7 @@ from app.core.exceptions import (
 from app.models.attendance_record import AttendanceRecord
 from app.models.enums import AttendanceMethod, AttendanceStatus, SessionStatus, UserRole
 from app.models.user import User
+from app.schemas.attendance import ManualMarkItem
 from app.services.attendance_service import attendance_service
 from tests.factories import make_course, make_enrollment, make_record, make_session, make_user
 
@@ -228,6 +229,191 @@ async def test_check_in_concurrent_gather() -> None:
             assert len(recs) == 1
     finally:
         await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# bulk_mark Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bulk_mark_validations_and_upsert(db_session: AsyncSession) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    other_teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    s1 = await make_user(db_session, role=UserRole.STUDENT)
+    s2 = await make_user(db_session, role=UserRole.STUDENT)
+    unenrolled = await make_user(db_session, role=UserRole.STUDENT)
+
+    await make_enrollment(db_session, course=course, student=s1)
+    await make_enrollment(db_session, course=course, student=s2)
+
+    session_obj = await make_session(db_session, course=course)
+
+    # Session not found
+    with pytest.raises(NotFoundError) as exc:
+        await attendance_service.bulk_mark(db_session, teacher, uuid.uuid4(), [])
+    assert exc.value.code == "SESSION_NOT_FOUND"
+
+    # Course not found
+    with patch.object(attendance_service.course_repo, "get_by_id", AsyncMock(return_value=None)):
+        with pytest.raises(NotFoundError) as exc:
+            await attendance_service.bulk_mark(db_session, teacher, session_obj.id, [])
+        assert exc.value.code == "COURSE_NOT_FOUND"
+
+    # Permission denied
+    with pytest.raises(PermissionDeniedError) as exc:
+        await attendance_service.bulk_mark(db_session, other_teacher, session_obj.id, [])
+    assert exc.value.code == "PERMISSION_DENIED"
+
+    # Empty items
+    assert await attendance_service.bulk_mark(db_session, teacher, session_obj.id, []) == []
+
+    # Student not enrolled
+    with pytest.raises(ValidationAppError) as exc:
+        await attendance_service.bulk_mark(
+            db_session,
+            teacher,
+            session_obj.id,
+            [ManualMarkItem(student_id=unenrolled.id, status=AttendanceStatus.PRESENT)],
+        )
+    assert exc.value.code == "STUDENT_NOT_ENROLLED"
+
+    # Initial mark: s1 present, s2 absent
+    items = [
+        ManualMarkItem(student_id=s1.id, status=AttendanceStatus.PRESENT, note="Here"),
+        ManualMarkItem(student_id=s2.id, status=AttendanceStatus.ABSENT),
+    ]
+    records = await attendance_service.bulk_mark(db_session, teacher, session_obj.id, items)
+    assert len(records) == 2
+
+    # Second mark (upsert): change s2 to EXCUSED
+    items_update = [
+        ManualMarkItem(student_id=s2.id, status=AttendanceStatus.EXCUSED, note="Excused note")
+    ]
+    updated_records = await attendance_service.bulk_mark(
+        db_session, teacher, session_obj.id, items_update
+    )
+    assert len(updated_records) == 1
+    assert updated_records[0].status == AttendanceStatus.EXCUSED.value
+    assert updated_records[0].marked_by == teacher.id
+    assert updated_records[0].method == AttendanceMethod.MANUAL.value
+
+
+# ---------------------------------------------------------------------------
+# update_record Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_record(db_session: AsyncSession) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    other_teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    student = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=student)
+    session_obj = await make_session(db_session, course=course)
+
+    record = await make_record(
+        db_session,
+        class_session=session_obj,
+        student=student,
+        status=AttendanceStatus.ABSENT,
+    )
+
+    # Record not found
+    with pytest.raises(NotFoundError) as exc:
+        await attendance_service.update_record(
+            db_session, teacher, uuid.uuid4(), AttendanceStatus.PRESENT
+        )
+    assert exc.value.code == "ATTENDANCE_RECORD_NOT_FOUND"
+
+    # Permission denied
+    with pytest.raises(PermissionDeniedError) as exc:
+        await attendance_service.update_record(
+            db_session, other_teacher, record.id, AttendanceStatus.PRESENT
+        )
+    assert exc.value.code == "PERMISSION_DENIED"
+
+    # Close session to verify override after close
+    session_obj.status = SessionStatus.CLOSED.value
+    await db_session.flush()
+
+    # Success update (override after close works and sets method=manual)
+    updated = await attendance_service.update_record(
+        db_session,
+        teacher,
+        record.id,
+        AttendanceStatus.LATE,
+        note="Arrived 15 mins late",
+    )
+    assert updated.status == AttendanceStatus.LATE.value
+    assert updated.note == "Arrived 15 mins late"
+    assert updated.marked_by == teacher.id
+    assert updated.method == AttendanceMethod.MANUAL.value
+
+
+# ---------------------------------------------------------------------------
+# get_session_roster Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_session_roster(db_session: AsyncSession) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    other_teacher = await make_user(db_session, role=UserRole.TEACHER)
+    admin = await make_user(db_session, role=UserRole.ADMIN)
+    course = await make_course(db_session, teacher=teacher)
+    s1 = await make_user(db_session, role=UserRole.STUDENT, full_name="Alice")
+    s2 = await make_user(db_session, role=UserRole.STUDENT, full_name="Bob")
+
+    await make_enrollment(db_session, course=course, student=s1)
+    await make_enrollment(db_session, course=course, student=s2)
+
+    session_obj = await make_session(db_session, course=course)
+
+    # Session not found
+    with pytest.raises(NotFoundError) as exc:
+        await attendance_service.get_session_roster(db_session, teacher, uuid.uuid4())
+    assert exc.value.code == "SESSION_NOT_FOUND"
+
+    # Course not found
+    with patch.object(attendance_service.course_repo, "get_by_id", AsyncMock(return_value=None)):
+        with pytest.raises(NotFoundError) as exc:
+            await attendance_service.get_session_roster(db_session, teacher, session_obj.id)
+        assert exc.value.code == "COURSE_NOT_FOUND"
+
+    # Permission denied
+    with pytest.raises(PermissionDeniedError) as exc:
+        await attendance_service.get_session_roster(db_session, other_teacher, session_obj.id)
+    assert exc.value.code == "PERMISSION_DENIED"
+
+    # s1 has a record, s2 does not
+    now = datetime.now(UTC)
+    await make_record(
+        db_session,
+        class_session=session_obj,
+        student=s1,
+        status=AttendanceStatus.PRESENT,
+        checked_in_at=now,
+    )
+
+    roster = await attendance_service.get_session_roster(db_session, teacher, session_obj.id)
+    assert roster.session_id == session_obj.id
+    assert roster.course_id == course.id
+    assert len(roster.items) == 2
+
+    s1_item = next(item for item in roster.items if item.student_id == s1.id)
+    assert s1_item.status == AttendanceStatus.PRESENT
+    assert s1_item.record_id is not None
+
+    s2_item = next(item for item in roster.items if item.student_id == s2.id)
+    assert s2_item.status is None
+    assert s2_item.record_id is None
+
+    # Admin can also get roster
+    roster_admin = await attendance_service.get_session_roster(db_session, admin, session_obj.id)
+    assert len(roster_admin.items) == 2
 
 
 # ---------------------------------------------------------------------------

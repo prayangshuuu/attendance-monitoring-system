@@ -3,12 +3,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.deps import ClockDep, CurrentUser, DbSession, RateLimiterDep
+from app.api.deps import ClockDep, CurrentUser, DbSession, RateLimiterDep, TeacherOrAdmin
 from app.core.exceptions import AppError
 from app.models.attendance_record import AttendanceRecord
 from app.schemas.attendance import (
     AttendanceRead,
+    AttendanceUpdate,
+    BulkMarkRequest,
     CheckInRequest,
+    SessionAttendanceRosterResponse,
 )
 from app.schemas.common import Page, PaginationParams
 from app.services.attendance_service import attendance_service
@@ -44,6 +47,65 @@ async def check_in(
         session_id=id,
         code=body.code,
         clock=clock,
+    )
+
+
+@router.get(
+    "/sessions/{id}/attendance",
+    response_model=SessionAttendanceRosterResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get session attendance roster",
+)
+async def get_session_attendance(
+    id: UUID,
+    current_user: TeacherOrAdmin,
+    db: DbSession,
+) -> SessionAttendanceRosterResponse:
+    return await attendance_service.get_session_roster(
+        session=db,
+        teacher_or_admin=current_user,
+        session_id=id,
+    )
+
+
+@router.put(
+    "/sessions/{id}/attendance",
+    response_model=list[AttendanceRead],
+    status_code=status.HTTP_200_OK,
+    summary="Bulk manual mark session attendance",
+)
+async def bulk_mark_attendance(
+    id: UUID,
+    body: BulkMarkRequest,
+    current_user: TeacherOrAdmin,
+    db: DbSession,
+) -> list[AttendanceRecord]:
+    return await attendance_service.bulk_mark(
+        session=db,
+        teacher=current_user,
+        session_id=id,
+        items=body.items,
+    )
+
+
+@router.patch(
+    "/attendance/{record_id}",
+    response_model=AttendanceRead,
+    status_code=status.HTTP_200_OK,
+    summary="Update single attendance record",
+)
+async def update_attendance_record(
+    record_id: UUID,
+    body: AttendanceUpdate,
+    current_user: TeacherOrAdmin,
+    db: DbSession,
+) -> AttendanceRecord:
+    return await attendance_service.update_record(
+        session=db,
+        teacher=current_user,
+        record_id=record_id,
+        status=body.status,
+        note=body.note,
     )
 
 
