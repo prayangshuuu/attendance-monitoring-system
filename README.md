@@ -9,6 +9,7 @@ Backend API service for course attendance monitoring and tracking.
 - JWT authentication with access token & refresh token rotation
 - Argon2 password hashing via pwdlib
 - Role-based authorization (`admin`, `teacher`, `student`)
+- User management (admin CRUD, pagination, ILIKE search, self password change, atomic bulk CSV import)
 - Typed configuration via Pydantic v2 settings
 - Async SQLAlchemy 2.0 database session and declarative base
 - Alembic async database migrations
