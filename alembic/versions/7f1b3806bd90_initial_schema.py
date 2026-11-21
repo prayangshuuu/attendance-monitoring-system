@@ -58,6 +58,18 @@ def upgrade() -> None:
         sa.Column("min_attendance_pct", sa.Float(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
             "min_attendance_pct >= 0 AND min_attendance_pct <= 100",
             name=op.f("courses_min_attendance_pct_range_check"),

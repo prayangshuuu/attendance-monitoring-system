@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, UUIDPkMixin
+from app.db.base import Base, TimestampMixin, UUIDPkMixin
 
 if TYPE_CHECKING:
     from app.models.class_session import ClassSession
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
-class Course(Base, UUIDPkMixin):
+class Course(Base, UUIDPkMixin, TimestampMixin):
     __tablename__ = "courses"
     __table_args__ = (
         CheckConstraint(

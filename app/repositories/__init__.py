@@ -1,3 +1,9 @@
+from app.repositories.course_repository import CourseRepository, course_repository
 from app.repositories.user_repository import UserRepository, user_repository
 
-__all__ = ["UserRepository", "user_repository"]
+__all__ = [
+    "CourseRepository",
+    "UserRepository",
+    "course_repository",
+    "user_repository",
+]
