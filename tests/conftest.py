@@ -1,5 +1,6 @@
 import os
 from collections.abc import AsyncGenerator
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -29,6 +30,13 @@ async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
@@ -47,7 +55,7 @@ async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, N
 
         @event.listens_for(session.sync_session, "after_transaction_end")
         def restart_savepoint(session: Session, transaction: object) -> None:
-            if conn.closed:
+            if conn.closed or conn.sync_connection is None:
                 return
             if not conn.sync_connection.in_nested_transaction():
                 conn.sync_connection.begin_nested()

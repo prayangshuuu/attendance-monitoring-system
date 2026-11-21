@@ -11,6 +11,13 @@ Backend API service for course attendance monitoring and tracking.
 - Alembic async database migrations
 - Health check endpoint with database probe
 
+## Data Model
+- `User`: System accounts with roles (`admin`, `teacher`, `student`), credentials, and optional student identifier.
+- `Course`: Academic courses managed by teachers with attendance percentage thresholds.
+- `Enrollment`: Student enrollments associating students with courses.
+- `ClassSession`: Individual class meetings with schedule intervals, check-in codes, and session status lifecycle.
+- `AttendanceRecord`: Check-in log entries tracking student attendance statuses, methods, and audit notes.
+
 ## Quick Start
 
 1. Install dependencies:
