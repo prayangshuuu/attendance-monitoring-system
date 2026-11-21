@@ -16,8 +16,10 @@ from app.core.exceptions import (
 from app.models.attendance_record import AttendanceRecord
 from app.models.enums import AttendanceMethod, AttendanceStatus, SessionStatus, UserRole
 from app.models.user import User
+from app.repositories.session_repository import session_repository
 from app.schemas.attendance import ManualMarkItem
 from app.services.attendance_service import attendance_service
+from app.services.session_service import session_service
 from tests.factories import make_course, make_enrollment, make_record, make_session, make_user
 
 
@@ -435,3 +437,94 @@ async def test_list_student_records(db_session: AsyncSession) -> None:
     assert page.total == 1
     assert len(page.items) == 1
     assert page.items[0].student_id == student.id
+
+
+# ---------------------------------------------------------------------------
+# mark_absentees and on_session_closed Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mark_absentees_and_close_session_flow(db_session: AsyncSession) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    s1 = await make_user(db_session, role=UserRole.STUDENT)
+    s2 = await make_user(db_session, role=UserRole.STUDENT)
+    s3 = await make_user(db_session, role=UserRole.STUDENT)
+
+    await make_enrollment(db_session, course=course, student=s1)
+    await make_enrollment(db_session, course=course, student=s2)
+    await make_enrollment(db_session, course=course, student=s3)
+
+    session_obj = await make_session(
+        db_session,
+        course=course,
+        status=SessionStatus.OPEN.value,
+        checkin_code="XYZ123",
+    )
+
+    # s1 already checked in
+    await make_record(
+        db_session,
+        class_session=session_obj,
+        student=s1,
+        status=AttendanceStatus.PRESENT,
+    )
+
+    # Close session
+    closed = await session_service.close_session(db_session, session_obj.id, teacher)
+    assert closed.status == SessionStatus.CLOSED
+
+    # Verify s2 and s3 were marked ABSENT, s1 is still PRESENT
+    records = await attendance_service.attendance_repo.get_records_for_session(
+        db_session, session_obj.id
+    )
+    assert len(records) == 3
+    rec_by_student = {r.student_id: r for r in records}
+    assert rec_by_student[s1.id].status == AttendanceStatus.PRESENT.value
+    assert rec_by_student[s2.id].status == AttendanceStatus.ABSENT.value
+    assert rec_by_student[s3.id].status == AttendanceStatus.ABSENT.value
+
+    # Closing twice -> 409 and no duplicate records
+    with pytest.raises(ConflictError) as exc:
+        await session_service.close_session(db_session, session_obj.id, teacher)
+    assert exc.value.status_code == 409
+    records_after = await attendance_service.attendance_repo.get_records_for_session(
+        db_session, session_obj.id
+    )
+    assert len(records_after) == 3
+
+
+@pytest.mark.asyncio
+async def test_close_session_failure_rolls_back_session_closure(
+    db_session: AsyncSession,
+) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    student = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=student)
+
+    session_obj = await make_session(
+        db_session,
+        course=course,
+        status=SessionStatus.OPEN.value,
+        checkin_code="FLFAIL",
+    )
+    session_id = session_obj.id
+    await db_session.commit()
+
+    # Simulate mark_absentees failure and verify session stays open via atomic rollback
+    with (
+        patch(
+            "app.services.attendance_service.attendance_service.mark_absentees",
+            side_effect=RuntimeError("Database failure while marking absentees"),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        await session_service.close_session(db_session, session_id, teacher)
+
+    # Re-query session from repository to ensure the failure rolled back and session remains OPEN
+    reloaded = await session_repository.get_by_id(db_session, session_id)
+    assert reloaded is not None
+    assert reloaded.status == SessionStatus.OPEN.value
+    assert reloaded.checkin_code == "FLFAIL"

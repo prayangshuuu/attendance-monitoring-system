@@ -55,9 +55,11 @@ def validate_transition(current_status: SessionStatus, new_status: SessionStatus
 async def on_session_closed(session: AsyncSession, class_session: ClassSession) -> None:
     """Hook invoked when a class session transitions to CLOSED.
 
-    Auto-absent marking for enrolled students without records will be implemented in PROMT_8.
+    Auto-absent marking for enrolled students without records.
     """
-    pass
+    from app.services.attendance_service import attendance_service
+
+    await attendance_service.mark_absentees(session, class_session)
 
 
 def mask_session_for_user(class_session: ClassSession, user: User) -> SessionRead:
@@ -338,7 +340,13 @@ class SessionService:
         class_session.code_expires_at = None
 
         updated = await session_repository.update(session, class_session)
-        await on_session_closed(session, updated)
+        try:
+            await on_session_closed(session, updated)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        await session.refresh(updated)
         return SessionRead.model_validate(updated)
 
     async def cancel_session(

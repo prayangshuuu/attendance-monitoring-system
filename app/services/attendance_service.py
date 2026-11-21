@@ -13,6 +13,7 @@ from app.core.exceptions import (
     ValidationAppError,
 )
 from app.models.attendance_record import AttendanceRecord
+from app.models.class_session import ClassSession
 from app.models.enrollment import Enrollment
 from app.models.enums import AttendanceMethod, AttendanceStatus, SessionStatus
 from app.models.user import User
@@ -288,6 +289,41 @@ class AttendanceService:
             page=page,
             size=size,
         )
+
+    async def mark_absentees(
+        self,
+        session: AsyncSession,
+        class_session: ClassSession,
+    ) -> list[AttendanceRecord]:
+        stmt_enrolled = select(Enrollment.student_id).where(
+            Enrollment.course_id == class_session.course_id
+        )
+        res_enrolled = await session.execute(stmt_enrolled)
+        enrolled_ids = set(res_enrolled.scalars().all())
+
+        stmt_records = select(AttendanceRecord.student_id).where(
+            AttendanceRecord.session_id == class_session.id
+        )
+        res_records = await session.execute(stmt_records)
+        recorded_ids = set(res_records.scalars().all())
+
+        absent_student_ids = sorted(enrolled_ids - recorded_ids)
+        if not absent_student_ids:
+            return []
+
+        absent_records = [
+            AttendanceRecord(
+                session_id=class_session.id,
+                student_id=s_id,
+                status=AttendanceStatus.ABSENT.value,
+                method=AttendanceMethod.MANUAL.value,
+                marked_by=None,
+                checked_in_at=None,
+                note=None,
+            )
+            for s_id in absent_student_ids
+        ]
+        return await self.attendance_repo.create_many(session, absent_records)
 
 
 attendance_service = AttendanceService()
