@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, UUIDPkMixin
+from app.db.base import Base, TimestampMixin, UUIDPkMixin
 from app.models.enums import AttendanceMethod, AttendanceStatus
 
 if TYPE_CHECKING:
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
-class AttendanceRecord(Base, UUIDPkMixin):
+class AttendanceRecord(Base, UUIDPkMixin, TimestampMixin):
     __tablename__ = "attendance_records"
     __table_args__ = (
         UniqueConstraint(

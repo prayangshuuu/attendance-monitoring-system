@@ -1,3 +1,4 @@
+from app.services.attendance_service import AttendanceService, attendance_service
 from app.services.auth_service import AuthService, auth_service
 from app.services.course_service import CourseService, course_service
 from app.services.enrollment_service import EnrollmentService, enrollment_service
@@ -14,11 +15,13 @@ from app.services.user_service import UserService, user_service
 
 __all__ = [
     "ALLOWED_TRANSITIONS",
+    "AttendanceService",
     "AuthService",
     "CourseService",
     "EnrollmentService",
     "SessionService",
     "UserService",
+    "attendance_service",
     "auth_service",
     "course_service",
     "enrollment_service",

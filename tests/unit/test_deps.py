@@ -5,10 +5,11 @@ import pytest
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import get_current_user, get_rate_limiter, require_roles
 from app.core.exceptions import AuthenticationError, PermissionDeniedError
 from app.core.security import create_access_token
 from app.models.enums import UserRole
+from app.utils.rate_limiter import RateLimiter
 from tests.factories import make_user
 
 
@@ -81,3 +82,8 @@ async def test_require_roles_checker(db_session: AsyncSession) -> None:
 
     allowed = await admin_guard(admin)
     assert allowed.id == admin.id
+
+
+def test_get_rate_limiter_dep() -> None:
+    limiter = get_rate_limiter()
+    assert isinstance(limiter, RateLimiter)

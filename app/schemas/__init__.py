@@ -1,3 +1,12 @@
+from app.schemas.attendance import (
+    AttendanceRead,
+    AttendanceUpdate,
+    BulkMarkRequest,
+    CheckInRequest,
+    ManualMarkItem,
+    SessionAttendanceRosterItem,
+    SessionAttendanceRosterResponse,
+)
 from app.schemas.auth import LoginRequest, RefreshTokenRequest, TokenResponse
 from app.schemas.common import Page, PaginationParams
 from app.schemas.course import (
@@ -20,6 +29,10 @@ from app.schemas.session import (
 from app.schemas.user import PasswordChange, UserCreate, UserRead, UserResponse, UserUpdate
 
 __all__ = [
+    "AttendanceRead",
+    "AttendanceUpdate",
+    "BulkMarkRequest",
+    "CheckInRequest",
     "CourseCreate",
     "CourseRead",
     "CourseResponse",
@@ -29,12 +42,15 @@ __all__ = [
     "EnrollmentRead",
     "EnrollmentResult",
     "LoginRequest",
+    "ManualMarkItem",
     "Page",
     "PaginationParams",
     "PasswordChange",
     "RefreshTokenRequest",
     "RecurringSessionCreate",
     "RecurringSessionResult",
+    "SessionAttendanceRosterItem",
+    "SessionAttendanceRosterResponse",
     "SessionCreate",
     "SessionOpenResponse",
     "SessionRead",
