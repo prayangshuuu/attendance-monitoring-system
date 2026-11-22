@@ -55,3 +55,54 @@ def test_get_settings_cached() -> None:
     s1 = get_settings()
     s2 = get_settings()
     assert s1 is s2
+
+
+def test_production_settings_valid() -> None:
+    settings = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY="a-very-strong-production-secret-key-that-is-long-enough",
+        FIRST_ADMIN_PASSWORD="StrongSuperSecretPassword2026!#",
+    )
+    assert settings.ENVIRONMENT == "production"
+    assert settings.JWT_SECRET_KEY == "a-very-strong-production-secret-key-that-is-long-enough"
+    assert settings.FIRST_ADMIN_PASSWORD == "StrongSuperSecretPassword2026!#"
+
+
+@pytest.mark.parametrize(
+    "insecure_jwt",
+    [
+        "short-secret",
+        "change-me-long-enough-production-secret-key-12345",
+        "a-long-enough-secret-key-with-placeholder-value",
+        "CHANGE-ME-uppercase-long-enough-secret-key-12345",
+        "PLACEHOLDER-uppercase-long-enough-secret-key-123",
+    ],
+)
+def test_production_settings_insecure_jwt_rejected(insecure_jwt: str) -> None:
+    with pytest.raises(
+        ValueError,
+        match="JWT_SECRET_KEY must have length >= 32",
+    ):
+        Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET_KEY=insecure_jwt,
+            FIRST_ADMIN_PASSWORD="StrongSuperSecretPassword2026!#",
+        )
+
+
+@pytest.mark.parametrize(
+    "insecure_pwd",
+    [
+        "ChangeMe123!",
+        "admin",
+        "password",
+        "12345678",
+    ],
+)
+def test_production_settings_insecure_admin_password_rejected(insecure_pwd: str) -> None:
+    with pytest.raises(ValueError, match="FIRST_ADMIN_PASSWORD cannot be default/insecure"):
+        Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET_KEY="a-very-strong-production-secret-key-that-is-long-enough",
+            FIRST_ADMIN_PASSWORD=insecure_pwd,
+        )

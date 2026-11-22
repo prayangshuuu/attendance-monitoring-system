@@ -42,7 +42,11 @@ async def test_security_headers_in_development(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_security_headers_in_production() -> None:
-    prod_settings = Settings(ENVIRONMENT="production")
+    prod_settings = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY="super-secret-key-that-is-at-least-32-chars-long",
+        FIRST_ADMIN_PASSWORD="StrongProdPassword123!",
+    )
     with (
         patch("app.main.get_settings", return_value=prod_settings),
         patch("app.core.middleware.get_settings", return_value=prod_settings),

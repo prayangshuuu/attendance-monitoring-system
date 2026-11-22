@@ -1,8 +1,8 @@
 import json
 from functools import lru_cache
-from typing import Any
+from typing import Any, Self
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +43,24 @@ class Settings(BaseSettings):
         if isinstance(v, (list, tuple, set)):
             return [str(item).strip() for item in v if str(item).strip()]
         return []
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Self:
+        if self.ENVIRONMENT == "production":
+            jwt_secret = self.JWT_SECRET_KEY.lower()
+            if (
+                len(self.JWT_SECRET_KEY) < 32
+                or "change-me" in jwt_secret
+                or "placeholder" in jwt_secret
+            ):
+                raise ValueError(
+                    "JWT_SECRET_KEY must have length >= 32 and cannot contain "
+                    "'change-me' or 'placeholder' in production"
+                )
+            insecure_passwords = {"ChangeMe123!", "admin", "password", "12345678"}
+            if self.FIRST_ADMIN_PASSWORD in insecure_passwords:
+                raise ValueError("FIRST_ADMIN_PASSWORD cannot be default/insecure in production")
+        return self
 
 
 @lru_cache

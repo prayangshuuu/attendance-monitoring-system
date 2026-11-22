@@ -265,7 +265,12 @@ def test_setup_logging_dev_and_prod() -> None:
         assert len(root.handlers) >= 1
         assert isinstance(root.handlers[0].formatter, DevelopmentFormatter)
 
-    with patch("app.core.logging.get_settings", return_value=Settings(ENVIRONMENT="production")):
+    prod_settings = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY="super-secret-key-that-is-at-least-32-chars-long",
+        FIRST_ADMIN_PASSWORD="StrongProdPassword123!",
+    )
+    with patch("app.core.logging.get_settings", return_value=prod_settings):
         setup_logging()
         root = logging.getLogger()
         assert len(root.handlers) >= 1
