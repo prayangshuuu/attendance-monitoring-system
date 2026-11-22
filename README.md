@@ -61,7 +61,17 @@ uv run uvicorn app.main:app --reload
 ## Running Tests
 
 ```bash
+# Run full test suite with coverage
 uv run pytest
+
+# Run unit tests only
+uv run pytest -m unit
+
+# Run integration tests only
+uv run pytest -m integration
+
+# Run tests against PostgreSQL
+TEST_DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/attendance_test" uv run pytest
 ```
 
 ## API Documentation

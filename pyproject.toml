@@ -29,6 +29,7 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
     "pytest-cov>=7.1.0",
+    "pytest-randomly>=5.1.0",
     "ruff>=0.17.6",
 ]
 
@@ -50,7 +51,18 @@ strict = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "--cov=app --cov-report=term-missing"
+addopts = "--cov=app --cov-report=term-missing --cov-branch"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow running tests",
+    "postgres: Tests requiring PostgreSQL",
+]
 filterwarnings = [
     "ignore:The HMAC key is:UserWarning",
 ]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
