@@ -5,6 +5,15 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "email": "student@example.com",
+                "password": "Password123!",
+            }
+        }
+    }
+
 
 class TokenResponse(BaseModel):
     access_token: str

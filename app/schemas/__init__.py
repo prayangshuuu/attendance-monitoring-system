@@ -8,7 +8,7 @@ from app.schemas.attendance import (
     SessionAttendanceRosterResponse,
 )
 from app.schemas.auth import LoginRequest, RefreshTokenRequest, TokenResponse
-from app.schemas.common import Page, PaginationParams
+from app.schemas.common import ErrorDetail, ErrorResponse, Page, PaginationParams
 from app.schemas.course import (
     CourseCreate,
     CourseRead,
@@ -53,6 +53,8 @@ __all__ = [
     "EnrollmentCreate",
     "EnrollmentRead",
     "EnrollmentResult",
+    "ErrorDetail",
+    "ErrorResponse",
     "LoginRequest",
     "ManualMarkItem",
     "Page",

@@ -1,6 +1,7 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -14,9 +15,23 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.db.session import engine, get_db
+from app.schemas.common import ErrorResponse
 from scripts.create_admin import bootstrap_admin
 
 settings = get_settings()
+logger = logging.getLogger("app.main")
+
+HTTP_STATUS_CODES: dict[int, str] = {}
+
+STANDARD_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"model": ErrorResponse, "description": "Bad Request"},
+    401: {"model": ErrorResponse, "description": "Unauthorized"},
+    403: {"model": ErrorResponse, "description": "Forbidden"},
+    404: {"model": ErrorResponse, "description": "Not Found"},
+    422: {"model": ErrorResponse, "description": "Validation Error"},
+    429: {"model": ErrorResponse, "description": "Too Many Requests"},
+    500: {"model": ErrorResponse, "description": "Internal Server Error"},
+}
 
 
 @asynccontextmanager
@@ -27,7 +42,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
+    current_settings = get_settings()
+    is_production = current_settings.ENVIRONMENT == "production"
+
+    app = FastAPI(
+        title=current_settings.APP_NAME,
+        lifespan=lifespan,
+        docs_url=None if is_production else "/docs",
+        redoc_url=None if is_production else "/redoc",
+        openapi_url=None if is_production else "/openapi.json",
+        responses=STANDARD_RESPONSES,
+    )
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
@@ -63,8 +88,22 @@ def create_app() -> FastAPI:
             status_code=exc.status_code,
             content={
                 "error": {
-                    "code": "HTTP_ERROR",
+                    "code": HTTP_STATUS_CODES.get(exc.status_code, "HTTP_ERROR"),
                     "message": str(exc.detail),
+                    "details": {},
+                }
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("An unexpected error occurred: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "INTERNAL_SERVER_ERROR",
+                    "message": "An unexpected error occurred",
                     "details": {},
                 }
             },

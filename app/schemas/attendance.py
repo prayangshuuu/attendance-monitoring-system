@@ -7,7 +7,13 @@ from app.models.enums import AttendanceMethod, AttendanceStatus
 
 
 class CheckInRequest(BaseModel):
-    code: str = Field(..., min_length=1, max_length=50, description="Session check-in code")
+    code: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Session check-in code",
+        examples=["ABC123"],
+    )
 
 
 class AttendanceRead(BaseModel):

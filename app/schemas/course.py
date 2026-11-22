@@ -13,6 +13,18 @@ class CourseTeacherSummary(BaseModel):
 
 
 class CourseCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "code": "CSC1024",
+                "title": "Software Engineering",
+                "teacher_id": "00000000-0000-0000-0000-000000000000",
+                "min_attendance_pct": 80.0,
+                "is_active": True,
+            }
+        }
+    )
+
     code: str
     title: str
     teacher_id: UUID

@@ -30,6 +30,16 @@ UtcDatetime = Annotated[datetime, AfterValidator(ensure_utc_datetime)]
 
 
 class SessionCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "starts_at": "2026-03-01T09:00:00Z",
+                "ends_at": "2026-03-01T11:00:00Z",
+                "late_after_minutes": 10,
+            }
+        }
+    )
+
     starts_at: TzAwareDatetime
     ends_at: TzAwareDatetime
     late_after_minutes: int = Field(default=10, ge=0)

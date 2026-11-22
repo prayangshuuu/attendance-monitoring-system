@@ -31,6 +31,18 @@ UserResponse = UserRead
 
 
 class UserCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "email": "student@example.com",
+                "full_name": "Alice Smith",
+                "role": "student",
+                "password": "Password123!",
+                "student_id": "STU1001",
+            }
+        }
+    )
+
     email: EmailStr
     full_name: str
     role: UserRole
