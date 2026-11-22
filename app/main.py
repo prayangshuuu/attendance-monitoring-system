@@ -14,6 +14,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
+from app.core.logging import setup_logging
+from app.core.middleware import AccessLogMiddleware, RequestIDMiddleware
 from app.db.session import engine, get_db
 from app.schemas.common import ErrorResponse
 from scripts.create_admin import bootstrap_admin
@@ -42,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    setup_logging()
     current_settings = get_settings()
     is_production = current_settings.ENVIRONMENT == "production"
 
@@ -53,6 +56,9 @@ def create_app() -> FastAPI:
         openapi_url=None if is_production else "/openapi.json",
         responses=STANDARD_RESPONSES,
     )
+
+    app.add_middleware(AccessLogMiddleware)
+    app.add_middleware(RequestIDMiddleware)
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:

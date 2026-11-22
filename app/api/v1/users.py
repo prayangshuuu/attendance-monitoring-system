@@ -110,10 +110,15 @@ async def get_user_by_id(
 async def update_user(
     id: UUID,
     data: UserUpdate,
-    _admin: AdminUser,
+    admin: AdminUser,
     db: DbSession,
 ) -> User:
-    return await user_service.update_user(session=db, user_id=id, data=data)
+    return await user_service.update_user(
+        session=db,
+        user_id=id,
+        data=data,
+        actor_id=admin.id,
+    )
 
 
 @router.delete(

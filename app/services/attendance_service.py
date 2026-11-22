@@ -12,6 +12,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
     ValidationAppError,
 )
+from app.core.logging import audit_logger
 from app.models.attendance_record import AttendanceRecord
 from app.models.class_session import ClassSession
 from app.models.enrollment import Enrollment
@@ -165,15 +166,18 @@ class AttendanceService:
         existing_map = {r.student_id: r for r in existing_records}
 
         result_records: list[AttendanceRecord] = []
+        overrides: list[tuple[UUID, str | None, str]] = []
         for item in items:
             rec = existing_map.get(item.student_id)
             if rec is not None:
+                old_status = rec.status
                 rec.status = item.status.value
                 rec.note = item.note
                 rec.marked_by = teacher.id
                 rec.method = AttendanceMethod.MANUAL.value
                 session.add(rec)
                 result_records.append(rec)
+                overrides.append((item.student_id, old_status, item.status.value))
             else:
                 new_rec = AttendanceRecord(
                     session_id=session_id,
@@ -187,10 +191,31 @@ class AttendanceService:
                 session.add(new_rec)
                 result_records.append(new_rec)
                 existing_map[item.student_id] = new_rec
+                overrides.append((item.student_id, None, item.status.value))
 
         await session.commit()
         for r in result_records:
             await session.refresh(r)
+
+        for target_student_id, prev_status, new_status in overrides:
+            audit_logger.info(
+                "Manual attendance override: actor_id=%s, target_student_id=%s, "
+                "session_id=%s, old_status=%s, new_status=%s",
+                teacher.id,
+                target_student_id,
+                session_id,
+                prev_status,
+                new_status,
+                extra={
+                    "actor_id": str(teacher.id),
+                    "target_student_id": str(target_student_id),
+                    "session_id": str(session_id),
+                    "old_status": prev_status,
+                    "new_status": new_status,
+                    "action": "manual_attendance_override",
+                },
+            )
+
         return result_records
 
     async def update_record(
@@ -207,6 +232,7 @@ class AttendanceService:
 
         ensure_can_manage_course(teacher, record.session.course)
 
+        old_status = record.status
         record.status = status.value
         record.note = note
         record.marked_by = teacher.id
@@ -215,6 +241,25 @@ class AttendanceService:
         updated = await self.attendance_repo.update(session, record)
         await session.commit()
         await session.refresh(updated)
+
+        audit_logger.info(
+            "Manual attendance override: actor_id=%s, target_student_id=%s, "
+            "session_id=%s, old_status=%s, new_status=%s",
+            teacher.id,
+            record.student_id,
+            record.session_id,
+            old_status,
+            status.value,
+            extra={
+                "actor_id": str(teacher.id),
+                "target_student_id": str(record.student_id),
+                "session_id": str(record.session_id),
+                "old_status": old_status,
+                "new_status": status.value,
+                "action": "manual_attendance_override",
+            },
+        )
+
         return updated
 
     async def get_session_roster(

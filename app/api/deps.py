@@ -6,6 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthenticationError, PermissionDeniedError
+from app.core.logging import user_id_ctx_var
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.enums import UserRole
@@ -40,6 +41,7 @@ async def get_current_user(
     if not user.is_active:
         raise AuthenticationError("User account is inactive", code="USER_INACTIVE")
 
+    user_id_ctx_var.set(str(user.id))
     return user
 
 

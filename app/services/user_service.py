@@ -7,6 +7,7 @@ from pydantic import EmailStr, TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
+from app.core.logging import audit_logger, user_id_ctx_var
 from app.core.security import hash_password, verify_password
 from app.models.enums import UserRole
 from app.models.user import User
@@ -95,8 +96,10 @@ class UserService:
         session: AsyncSession,
         user_id: UUID | str,
         data: UserUpdate,
+        actor_id: UUID | str | None = None,
     ) -> User:
         user = await self.get_user_by_id(session, user_id)
+        old_role = user.role
 
         target_role = (
             data.role.value
@@ -163,6 +166,24 @@ class UserService:
         await self.user_repo.update(session, user)
         await session.commit()
         await session.refresh(user)
+
+        if data.role is not None and old_role != target_role:
+            effective_actor_id = str(actor_id) if actor_id else (user_id_ctx_var.get() or "system")
+            audit_logger.info(
+                "User role changed: actor_id=%s, target_user_id=%s, old_role=%s, new_role=%s",
+                effective_actor_id,
+                user.id,
+                old_role,
+                target_role,
+                extra={
+                    "actor_id": effective_actor_id,
+                    "target_user_id": str(user.id),
+                    "old_role": old_role,
+                    "new_role": target_role,
+                    "action": "user_role_change",
+                },
+            )
+
         return user
 
     async def deactivate_user(
