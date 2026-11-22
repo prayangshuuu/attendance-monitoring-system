@@ -71,7 +71,7 @@ async def export_course_csv(
     )
     return StreamingResponse(
         iter([csv_export.content]),
-        media_type="text/csv",
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{csv_export.filename}"'},
     )
 

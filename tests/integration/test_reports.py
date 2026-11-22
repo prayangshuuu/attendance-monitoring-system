@@ -500,6 +500,46 @@ async def test_csv_export_endpoint(
 
 
 @pytest.mark.asyncio
+async def test_export_course_csv_unicode_students(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, code="LANG101", teacher=teacher)
+    s1 = await make_user(
+        db_session, role=UserRole.STUDENT, full_name="José Müller", student_id="STU_JM"
+    )
+    s2 = await make_user(db_session, role=UserRole.STUDENT, full_name="李华", student_id="STU_LH")
+    s3 = await make_user(
+        db_session, role=UserRole.STUDENT, full_name="Владимир", student_id="STU_VL"
+    )
+    for s in (s1, s2, s3):
+        await make_enrollment(db_session, course=course, student=s)
+
+    session_obj = await make_session(db_session, course=course, status=SessionStatus.CLOSED.value)
+    await make_record(
+        db_session,
+        session=session_obj,
+        student=s1,
+        status=AttendanceStatus.PRESENT.value,
+    )
+
+    res = await client.get(
+        f"/api/v1/reports/courses/{course.id}/export.csv",
+        headers=auth_headers(teacher),
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "text/csv; charset=utf-8"
+
+    rows = list(csv.reader(io.StringIO(res.text)))
+    names = [row[1] for row in rows[1:]]
+    assert "José Müller" in names
+    assert "李华" in names
+    assert "Владимир" in names
+
+
+@pytest.mark.asyncio
 async def test_reports_permissions(
     client: AsyncClient,
     db_session: AsyncSession,
