@@ -11,8 +11,6 @@ from app.core.logging import request_id_ctx_var, user_id_ctx_var
 
 access_logger = logging.getLogger("app.access")
 
-__all__ = ["AccessLogMiddleware", "RequestIDMiddleware", "get_settings"]
-
 
 class RequestIDMiddleware:
     """Reads incoming X-Request-ID or generates a UUID, storing it in ContextVar."""
@@ -97,3 +95,41 @@ class AccessLogMiddleware:
                     "user_id": uid,
                 },
             )
+
+
+class SecurityHeadersMiddleware:
+    """Applies security headers (nosniff, DENY, referrer-policy, HSTS) to responses."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.settings = get_settings()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                existing_names = {
+                    b"x-content-type-options",
+                    b"x-frame-options",
+                    b"referrer-policy",
+                    b"strict-transport-security",
+                }
+                headers = [h for h in headers if h[0].lower() not in existing_names]
+
+                headers.append((b"x-content-type-options", b"nosniff"))
+                headers.append((b"x-frame-options", b"DENY"))
+                headers.append((b"referrer-policy", b"strict-origin-when-cross-origin"))
+
+                if self.settings.ENVIRONMENT == "production":
+                    headers.append(
+                        (b"strict-transport-security", b"max-age=31536000; includeSubDomains")
+                    )
+
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)

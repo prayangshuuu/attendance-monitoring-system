@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +16,11 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.logging import setup_logging
-from app.core.middleware import AccessLogMiddleware, RequestIDMiddleware
+from app.core.middleware import (
+    AccessLogMiddleware,
+    RequestIDMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.db.session import engine, get_db
 from app.schemas.common import ErrorResponse
 from scripts.create_admin import bootstrap_admin
@@ -57,8 +62,18 @@ def create_app() -> FastAPI:
         responses=STANDARD_RESPONSES,
     )
 
+    # Middlewares order: CORS -> RequestID -> AccessLog -> SecurityHeaders
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=current_settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
+    )
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:

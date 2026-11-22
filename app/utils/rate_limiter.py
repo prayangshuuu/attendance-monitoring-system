@@ -10,6 +10,8 @@ from app.core.exceptions import AppError
 class RateLimiter(Protocol):
     async def is_allowed(self, key: str, max_requests: int, window_seconds: int) -> bool: ...
 
+    async def reset(self, key: str | None = None) -> None: ...
+
 
 class InMemoryRateLimiter:
     def __init__(self) -> None:
@@ -42,9 +44,12 @@ class InMemoryRateLimiter:
                 status_code=429,
             )
 
-    async def reset(self) -> None:
+    async def reset(self, key: str | None = None) -> None:
         async with self._lock:
-            self._requests.clear()
+            if key is not None:
+                self._requests.pop(key, None)
+            else:
+                self._requests.clear()
 
 
 in_memory_rate_limiter = InMemoryRateLimiter()

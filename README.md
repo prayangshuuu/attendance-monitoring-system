@@ -14,6 +14,7 @@ Backend API service for course attendance monitoring and tracking.
 - Class sessions (scheduling, recurring, open/close)
 - Code-based student check-in, manual marking, auto-absent on close
 - Reports, at-risk detection, CSV export, admin dashboard
+- Structured logging, request IDs, rate limiting
 - Typed configuration via Pydantic v2 settings
 - Async SQLAlchemy 2.0 database session and declarative base
 - Alembic async database migrations

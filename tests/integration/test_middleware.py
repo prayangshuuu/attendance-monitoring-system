@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+from unittest.mock import patch
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.core.security import create_access_token
+from app.main import create_app
 from tests.factories import make_user
 
 
@@ -25,6 +28,65 @@ async def test_request_id_preserved_when_provided(client: AsyncClient) -> None:
     response = await client.get("/health", headers={"X-Request-ID": custom_id})
     assert response.status_code == 200
     assert response.headers.get("x-request-id") == custom_id
+
+
+@pytest.mark.asyncio
+async def test_security_headers_in_development(client: AsyncClient) -> None:
+    response = await client.get("/health")
+    assert response.headers.get("x-content-type-options") == "nosniff"
+    assert response.headers.get("x-frame-options") == "DENY"
+    assert response.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+    # HSTS should NOT be present in development
+    assert "strict-transport-security" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_security_headers_in_production() -> None:
+    prod_settings = Settings(ENVIRONMENT="production")
+    with (
+        patch("app.main.get_settings", return_value=prod_settings),
+        patch("app.core.middleware.get_settings", return_value=prod_settings),
+    ):
+        prod_app = create_app()
+        transport = ASGITransport(app=prod_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as prod_client:
+            response = await prod_client.get("/api/v1/health-non-existent")
+            assert response.headers.get("x-content-type-options") == "nosniff"
+            assert response.headers.get("x-frame-options") == "DENY"
+            assert response.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+            assert (
+                response.headers.get("strict-transport-security")
+                == "max-age=31536000; includeSubDomains"
+            )
+
+
+@pytest.mark.asyncio
+async def test_cors_middleware_headers(client: AsyncClient) -> None:
+    headers = {
+        "Origin": "http://localhost:3000",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "Content-Type, X-Request-ID",
+    }
+    response = await client.options("/api/v1/auth/login", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+    # Actual request with Origin should expose X-Request-ID
+    get_response = await client.get("/health", headers={"Origin": "http://localhost:3000"})
+    assert get_response.status_code == 200
+    assert get_response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    exposed = get_response.headers.get("access-control-expose-headers", "")
+    assert "x-request-id" in exposed.lower()
+
+    # Preflight from disallowed origin should not be granted access
+    disallowed_headers = {
+        "Origin": "http://unauthorized-origin.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "Content-Type",
+    }
+    disallowed_response = await client.options("/api/v1/auth/login", headers=disallowed_headers)
+    assert disallowed_response.headers.get("access-control-allow-origin") is None
 
 
 @pytest.mark.asyncio
