@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPkMixin
@@ -29,6 +29,7 @@ class AttendanceRecord(Base, UUIDPkMixin, TimestampMixin):
             "method IN ('code', 'manual')",
             name="attendance_method",
         ),
+        Index("ix_attendance_records_session_status", "session_id", "status"),
     )
 
     session_id: Mapped[uuid.UUID] = mapped_column(

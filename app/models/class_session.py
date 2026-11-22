@@ -23,6 +23,7 @@ class ClassSession(Base, UUIDPkMixin, TimestampMixin):
             name="session_status",
         ),
         Index("ix_class_sessions_course_id_starts_at", "course_id", "starts_at"),
+        Index("ix_class_sessions_course_status_starts", "course_id", "status", "starts_at"),
     )
 
     course_id: Mapped[uuid.UUID] = mapped_column(
