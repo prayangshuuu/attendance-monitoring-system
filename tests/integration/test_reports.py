@@ -1,3 +1,5 @@
+import csv
+import io
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
@@ -400,6 +402,101 @@ async def test_date_range_filter_narrows_sessions(
     )
     assert res_invalid.status_code == 400
     assert res_invalid.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_csv_export_endpoint(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    teacher_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    """CSV export test:
+
+    Check headers, rows, content-type text/csv, Content-Disposition filename
+    attendance_<COURSECODE>_<YYYYMMDD>.csv.
+    Check CSV formula injection escaping.
+    """
+    course = await make_course(db_session, teacher=teacher_user, code="MATH101")
+
+    # Malicious injection test cases
+    student_inj1 = await make_user(
+        db_session,
+        role=UserRole.STUDENT,
+        full_name='=HYPERLINK("http://evil.com","click")',
+        student_id="STU_INJ1",
+        email="inj1@example.com",
+    )
+    student_inj2 = await make_user(
+        db_session,
+        role=UserRole.STUDENT,
+        full_name="+cmd|' /C calc'!A0",
+        student_id="STU_INJ2",
+        email="inj2@example.com",
+    )
+    student_normal = await make_user(
+        db_session,
+        role=UserRole.STUDENT,
+        full_name="Normal Student",
+        student_id="STU_NORM",
+        email="normal@example.com",
+    )
+
+    await make_enrollment(db_session, course=course, student=student_inj1)
+    await make_enrollment(db_session, course=course, student=student_inj2)
+    await make_enrollment(db_session, course=course, student=student_normal)
+
+    sess = await make_session(db_session, course=course, status=SessionStatus.CLOSED)
+    await make_record(
+        db_session, class_session=sess, student=student_normal, status=AttendanceStatus.PRESENT
+    )
+    await make_record(
+        db_session, class_session=sess, student=student_inj1, status=AttendanceStatus.ABSENT
+    )
+    await make_record(
+        db_session, class_session=sess, student=student_inj2, status=AttendanceStatus.EXCUSED
+    )
+
+    res = await client.get(
+        f"/api/v1/reports/courses/{course.id}/export.csv",
+        headers=auth_headers(teacher_user),
+    )
+    assert res.status_code == 200
+
+    # Content-Type check
+    assert "text/csv" in res.headers["content-type"]
+
+    # Content-Disposition check
+    today_str = datetime.now(UTC).strftime("%Y%m%d")
+    expected_filename = f"attendance_MATH101_{today_str}.csv"
+    assert res.headers["content-disposition"] == f'attachment; filename="{expected_filename}"'
+
+    # CSV Rows check
+    csv_rows = list(csv.reader(io.StringIO(res.text)))
+    assert len(csv_rows) == 4  # 1 header + 3 students
+
+    header = csv_rows[0]
+    expected_header = [
+        "student_id",
+        "student_name",
+        "student_email",
+        "student_code",
+        "present_count",
+        "late_count",
+        "absent_count",
+        "excused_count",
+        "total_sessions",
+        "attended_sessions",
+        "percentage",
+        "is_at_risk",
+    ]
+    assert header == expected_header
+
+    # Injection verification: cells starting with = or + have ' prepended
+    names = [row[1] for row in csv_rows[1:]]
+    assert '\'=HYPERLINK("http://evil.com","click")' in names
+    assert "'+cmd|' /C calc'!A0" in names
+    assert "Normal Student" in names
 
 
 @pytest.mark.asyncio

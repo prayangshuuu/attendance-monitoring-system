@@ -2,7 +2,8 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import AdminUser, ClockDep, CurrentUser, DbSession, TeacherOrAdmin
 from app.schemas.report import (
@@ -48,6 +49,30 @@ async def get_course_at_risk(
         current_user=current_user,
         from_dt=from_dt,
         to_dt=to_dt,
+    )
+
+
+@router.get("/courses/{id}/export.csv")
+async def export_course_csv(
+    id: UUID,
+    db: DbSession,
+    current_user: TeacherOrAdmin,
+    clock: ClockDep,
+    from_dt: Annotated[datetime | None, Query(alias="from")] = None,
+    to_dt: Annotated[datetime | None, Query(alias="to")] = None,
+) -> Response:
+    csv_export = await report_service.export_course_csv(
+        session=db,
+        course_id=id,
+        current_user=current_user,
+        clock=clock,
+        from_dt=from_dt,
+        to_dt=to_dt,
+    )
+    return StreamingResponse(
+        iter([csv_export.content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{csv_export.filename}"'},
     )
 
 

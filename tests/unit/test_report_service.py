@@ -1,3 +1,5 @@
+import csv
+import io
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -7,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationAppError
 from app.models.enums import SessionStatus, UserRole
 from app.schemas.report import CourseReport, StudentCourseSummary
-from app.services.report_service import normalize_datetime, report_service
+from app.services.report_service import normalize_datetime, report_service, sanitize_csv_cell
 from app.utils.clock import Clock
-from tests.factories import make_course, make_session, make_user
+from tests.factories import make_course, make_enrollment, make_session, make_user
 
 
 class FrozenClock(Clock):
@@ -18,6 +20,23 @@ class FrozenClock(Clock):
 
     def now(self) -> datetime:
         return self._time
+
+
+def test_sanitize_csv_cell() -> None:
+    assert sanitize_csv_cell(None) == ""
+    assert sanitize_csv_cell("Alice") == "Alice"
+    assert sanitize_csv_cell(123) == "123"
+    assert sanitize_csv_cell(85.5) == "85.5"
+
+    # Formula triggers
+    assert (
+        sanitize_csv_cell('=HYPERLINK("http://evil.com","click")')
+        == '\'=HYPERLINK("http://evil.com","click")'
+    )
+    assert sanitize_csv_cell("+cmd|' /C calc'!A0") == "'+cmd|' /C calc'!A0"
+    assert sanitize_csv_cell("-123") == "'-123"
+    assert sanitize_csv_cell("@admin") == "'@admin"
+    assert sanitize_csv_cell(' =HYPERLINK("test")') == '\' =HYPERLINK("test")'
 
 
 def test_normalize_datetime() -> None:
@@ -188,6 +207,35 @@ async def test_get_student_report_service(db_session: AsyncSession) -> None:
     # 3. Student requesting self -> Success
     res = await report_service.get_student_report(db_session, student1.id, student1)
     assert res.student_id == student1.id
+
+
+@pytest.mark.asyncio
+async def test_export_course_csv_service(db_session: AsyncSession) -> None:
+    clock = FrozenClock(datetime(2026, 11, 22, 10, 0, 0, tzinfo=UTC))
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher, code="CS101")
+    student = await make_user(
+        db_session,
+        role=UserRole.STUDENT,
+        full_name='=HYPERLINK("http://evil.com","click")',
+        student_id="+cmd|' /C calc'!A0",
+    )
+    await make_enrollment(db_session, course=course, student=student)
+
+    export = await report_service.export_course_csv(db_session, course.id, teacher, clock)
+
+    assert export.filename == "attendance_CS101_20261122.csv"
+    reader = list(csv.reader(io.StringIO(export.content)))
+    assert len(reader) == 2  # header + 1 student
+    headers = reader[0]
+    assert headers[0] == "student_id"
+    assert headers[1] == "student_name"
+    assert headers[3] == "student_code"
+
+    row = reader[1]
+    # Sanitized formula cells have prepended single quote
+    assert row[1].startswith("'=")
+    assert row[3].startswith("'+")
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,7 @@
+import csv
+import io
 from datetime import UTC, datetime
+from typing import NamedTuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,12 +25,27 @@ from app.services.permissions import ensure_can_manage_course
 from app.utils.clock import Clock
 
 
+def sanitize_csv_cell(value: object) -> str:
+    if value is None:
+        return ""
+    s = str(value)
+    stripped = s.lstrip()
+    if stripped.startswith(("=", "+", "-", "@")):
+        return f"'{s}"
+    return s
+
+
 def normalize_datetime(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC)
+
+
+class CSVExport(NamedTuple):
+    content: str
+    filename: str
 
 
 class ReportService:
@@ -159,6 +177,64 @@ class ReportService:
             )
 
         return report
+
+    async def export_course_csv(
+        self,
+        session: AsyncSession,
+        course_id: UUID,
+        current_user: User,
+        clock: Clock,
+        from_dt: datetime | None = None,
+        to_dt: datetime | None = None,
+    ) -> CSVExport:
+        report = await self.get_course_report(
+            session=session,
+            course_id=course_id,
+            current_user=current_user,
+            from_dt=from_dt,
+            to_dt=to_dt,
+        )
+
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerow(
+            [
+                "student_id",
+                "student_name",
+                "student_email",
+                "student_code",
+                "present_count",
+                "late_count",
+                "absent_count",
+                "excused_count",
+                "total_sessions",
+                "attended_sessions",
+                "percentage",
+                "is_at_risk",
+            ]
+        )
+
+        for s in report.students:
+            writer.writerow(
+                [
+                    sanitize_csv_cell(s.student_id),
+                    sanitize_csv_cell(s.student_name),
+                    sanitize_csv_cell(s.student_email),
+                    sanitize_csv_cell(s.student_code or ""),
+                    sanitize_csv_cell(s.present_count),
+                    sanitize_csv_cell(s.late_count),
+                    sanitize_csv_cell(s.absent_count),
+                    sanitize_csv_cell(s.excused_count),
+                    sanitize_csv_cell(s.total_sessions),
+                    sanitize_csv_cell(s.attended_sessions),
+                    sanitize_csv_cell(f"{s.percentage:.2f}" if s.percentage is not None else ""),
+                    sanitize_csv_cell(s.is_at_risk),
+                ]
+            )
+
+        date_str = clock.now().strftime("%Y%m%d")
+        filename = f"attendance_{report.course_code}_{date_str}.csv"
+        return CSVExport(content=output.getvalue(), filename=filename)
 
     async def get_dashboard(
         self,
