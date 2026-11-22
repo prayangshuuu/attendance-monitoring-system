@@ -1,6 +1,8 @@
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
@@ -318,3 +320,50 @@ async def test_user_service_import_csv_success(db_session: AsyncSession) -> None
     assert users[1].role == UserRole.TEACHER.value
     assert users[1].student_id is None
     assert users[2].role == UserRole.ADMIN.value
+
+
+@pytest.mark.asyncio
+async def test_create_user_integrity_error_rolls_back_and_raises_conflict(
+    db_session: AsyncSession,
+) -> None:
+    data = UserCreate(
+        email="conflict_user@example.com",
+        full_name="Conflict User",
+        role=UserRole.STUDENT,
+        password="Password123!",
+        student_id="STU_CONF_1",
+    )
+    with (
+        patch.object(
+            db_session,
+            "commit",
+            AsyncMock(side_effect=IntegrityError("conflict", params={}, orig=Exception())),
+        ),
+        patch.object(db_session, "rollback", AsyncMock()) as mock_rollback,
+    ):
+        with pytest.raises(ConflictError) as exc:
+            await user_service.create_user(db_session, data)
+        assert exc.value.code == "USER_EXISTS"
+        assert exc.value.status_code == 409
+        mock_rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_user_integrity_error_rolls_back_and_raises_conflict(
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session, role=UserRole.STUDENT)
+    update_data = UserUpdate(full_name="New Name")
+    with (
+        patch.object(
+            db_session,
+            "commit",
+            AsyncMock(side_effect=IntegrityError("conflict", params={}, orig=Exception())),
+        ),
+        patch.object(db_session, "rollback", AsyncMock()) as mock_rollback,
+    ):
+        with pytest.raises(ConflictError) as exc:
+            await user_service.update_user(db_session, user.id, update_data)
+        assert exc.value.code == "USER_CONFLICT"
+        assert exc.value.status_code == 409
+        mock_rollback.assert_awaited_once()

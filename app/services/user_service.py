@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import EmailStr, TypeAdapter
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationAppError
@@ -48,9 +49,16 @@ class UserService:
             hashed_password=hash_password(data.password),
             is_active=True,
         )
-        await self.user_repo.create(session, user)
-        await session.commit()
-        await session.refresh(user)
+        try:
+            await self.user_repo.create(session, user)
+            await session.commit()
+            await session.refresh(user)
+        except IntegrityError:
+            await session.rollback()
+            raise ConflictError(
+                f"User with email '{data.email}' or student_id '{data.student_id}' already exists",
+                code="USER_EXISTS",
+            ) from None
         return user
 
     async def list_users(
@@ -163,9 +171,16 @@ class UserService:
         if data.is_active is not None:
             user.is_active = data.is_active
 
-        await self.user_repo.update(session, user)
-        await session.commit()
-        await session.refresh(user)
+        try:
+            await self.user_repo.update(session, user)
+            await session.commit()
+            await session.refresh(user)
+        except IntegrityError:
+            await session.rollback()
+            raise ConflictError(
+                "User conflict on update (email or student_id already taken)",
+                code="USER_CONFLICT",
+            ) from None
 
         if data.role is not None and old_role != target_role:
             effective_actor_id = str(actor_id) if actor_id else (user_id_ctx_var.get() or "system")
@@ -199,9 +214,16 @@ class UserService:
             )
         user = await self.get_user_by_id(session, user_id)
         user.is_active = False
-        await self.user_repo.update(session, user)
-        await session.commit()
-        await session.refresh(user)
+        try:
+            await self.user_repo.update(session, user)
+            await session.commit()
+            await session.refresh(user)
+        except IntegrityError:
+            await session.rollback()
+            raise ConflictError(
+                "User conflict on update (email or student_id already taken)",
+                code="USER_CONFLICT",
+            ) from None
         return user
 
     async def change_password(
