@@ -31,6 +31,7 @@ async def reset_rate_limiter() -> None:
     await in_memory_rate_limiter.reset()
 
 
+@pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_full_semester_lifecycle_e2e(
     client: AsyncClient,
