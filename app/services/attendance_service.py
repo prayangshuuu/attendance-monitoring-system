@@ -195,7 +195,15 @@ class AttendanceService:
                 existing_map[item.student_id] = new_rec
                 overrides.append((item.student_id, None, item.status.value))
 
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise ConflictError(
+                "Concurrent attendance modification conflict. Please retry.",
+                code="CONCURRENT_MODIFICATION",
+            ) from None
+
         for r in result_records:
             await session.refresh(r)
 

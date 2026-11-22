@@ -709,3 +709,33 @@ async def test_check_in_invalid_session_start_time(db_session: AsyncSession) -> 
         with pytest.raises(ValidationAppError) as exc:
             await attendance_service.check_in(db_session, student, session_obj.id, "GHI456")
         assert exc.value.code == "INVALID_SESSION_TIME"
+
+
+@pytest.mark.asyncio
+async def test_bulk_mark_integrity_error_rolls_back_and_raises_conflict(
+    db_session: AsyncSession,
+) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    student = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=student)
+    session_obj = await make_session(db_session, course=course)
+
+    with (
+        patch.object(
+            db_session,
+            "commit",
+            AsyncMock(side_effect=IntegrityError("duplicate", params={}, orig=Exception())),
+        ),
+        patch.object(db_session, "rollback", AsyncMock()) as mock_rollback,
+    ):
+        with pytest.raises(ConflictError) as exc:
+            await attendance_service.bulk_mark(
+                db_session,
+                teacher,
+                session_obj.id,
+                [ManualMarkItem(student_id=student.id, status=AttendanceStatus.PRESENT)],
+            )
+        assert exc.value.code == "CONCURRENT_MODIFICATION"
+        assert exc.value.status_code == 409
+        mock_rollback.assert_awaited_once()
