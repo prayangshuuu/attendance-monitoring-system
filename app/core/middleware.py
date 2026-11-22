@@ -98,7 +98,7 @@ class AccessLogMiddleware:
 
 
 class SecurityHeadersMiddleware:
-    """Applies security headers (nosniff, DENY, referrer-policy, HSTS) to responses."""
+    """Applies security headers (nosniff, DENY, referrer-policy, CSP, HSTS) to responses."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -117,12 +117,14 @@ class SecurityHeadersMiddleware:
                     b"x-frame-options",
                     b"referrer-policy",
                     b"strict-transport-security",
+                    b"content-security-policy",
                 }
                 headers = [h for h in headers if h[0].lower() not in existing_names]
 
                 headers.append((b"x-content-type-options", b"nosniff"))
                 headers.append((b"x-frame-options", b"DENY"))
                 headers.append((b"referrer-policy", b"strict-origin-when-cross-origin"))
+                headers.append((b"content-security-policy", b"default-src 'self'"))
 
                 if self.settings.ENVIRONMENT == "production":
                     headers.append(
