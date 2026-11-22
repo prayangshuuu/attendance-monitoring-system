@@ -17,6 +17,7 @@ if TEST_DATABASE_URL:
 else:
     os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["ENVIRONMENT"] = "testing"
+os.environ["JWT_SECRET_KEY"] = "change-me-32-byte-long-secret-key-attendance-system"
 
 from app.core.config import get_settings  # noqa: E402
 

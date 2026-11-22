@@ -61,7 +61,7 @@ markers = [
     "postgres: Tests requiring PostgreSQL",
 ]
 filterwarnings = [
-    "ignore:The HMAC key is:UserWarning",
+    "error",
 ]
 
 [tool.coverage.report]
