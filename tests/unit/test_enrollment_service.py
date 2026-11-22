@@ -33,6 +33,13 @@ async def test_enroll_students_success(db_session: AsyncSession) -> None:
     assert res2.enrolled == [s3.id]
     assert res2.skipped == [s1.id]
 
+    # Re-enrolling only already enrolled students (new_enrollments is empty)
+    res3 = await enrollment_service.enroll_students(
+        db_session, course.id, [s1.id, s2.id], current_user=admin
+    )
+    assert res3.enrolled == []
+    assert set(res3.skipped) == {s1.id, s2.id}
+
 
 @pytest.mark.asyncio
 async def test_enroll_students_empty_list(db_session: AsyncSession) -> None:

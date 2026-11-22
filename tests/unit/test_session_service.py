@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -358,6 +359,35 @@ async def test_update_session(db_session: AsyncSession) -> None:
     )
     assert updated.late_after_minutes == 20
     assert updated.starts_at == t1 + timedelta(minutes=30)
+
+    # 7. Valid update without late_after_minutes (branch 261->264)
+    updated_no_late = await session_service.update_session(
+        db_session,
+        s1.id,
+        teacher,
+        SessionUpdate(
+            starts_at=t1 + timedelta(minutes=40),
+            ends_at=t1 + timedelta(hours=1, minutes=40),
+        ),
+    )
+    assert updated_no_late.starts_at == t1 + timedelta(minutes=40)
+    assert updated_no_late.late_after_minutes == 20
+
+    # 8. Start/end time is None (line 238)
+    with patch.object(
+        session_service,
+        "_get_session_or_404",
+        AsyncMock(return_value=(s1, course)),
+    ):
+        s1.starts_at = None  # in-memory only
+        with pytest.raises(ValidationAppError) as exc4:
+            await session_service.update_session(
+                db_session,
+                s1.id,
+                teacher,
+                SessionUpdate(late_after_minutes=5),
+            )
+        assert exc4.value.code == "INVALID_SESSION_TIME"
 
 
 # -------------------------------------------------------------------------

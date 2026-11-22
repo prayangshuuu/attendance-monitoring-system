@@ -647,3 +647,65 @@ async def test_close_session_failure_rolls_back_session_closure(
     assert reloaded is not None
     assert reloaded.status == SessionStatus.OPEN.value
     assert reloaded.checkin_code == "FLFAIL"
+
+
+@pytest.mark.asyncio
+async def test_check_in_with_clock_returning_none(db_session: AsyncSession) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    student = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=student)
+
+    session_start = datetime.now(UTC) - timedelta(minutes=2)
+    session_obj = await make_session(
+        db_session,
+        course=course,
+        starts_at=session_start,
+        ends_at=session_start + timedelta(hours=2),
+        status=SessionStatus.OPEN.value,
+        checkin_code="DEF123",
+        code_expires_at=session_start + timedelta(minutes=30),
+        late_after_minutes=10,
+    )
+
+    class NoneClock:
+        def now(self) -> None:
+            return None
+
+    record = await attendance_service.check_in(
+        db_session,
+        student,
+        session_obj.id,
+        "DEF123",
+        clock=NoneClock(),  # type: ignore[arg-type]
+    )
+    assert record.status == AttendanceStatus.PRESENT.value
+    assert record.checked_in_at is not None
+
+
+@pytest.mark.asyncio
+async def test_check_in_invalid_session_start_time(db_session: AsyncSession) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    student = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=student)
+
+    session_obj = await make_session(
+        db_session,
+        course=course,
+        starts_at=datetime.now(UTC),
+        ends_at=datetime.now(UTC) + timedelta(hours=1),
+        status=SessionStatus.OPEN.value,
+        checkin_code="GHI456",
+        code_expires_at=datetime.now(UTC) + timedelta(minutes=30),
+    )
+    db_session.expunge(session_obj)
+    session_obj.starts_at = None
+    with patch.object(
+        attendance_service.session_repo,
+        "get_by_id",
+        AsyncMock(return_value=session_obj),
+    ):
+        with pytest.raises(ValidationAppError) as exc:
+            await attendance_service.check_in(db_session, student, session_obj.id, "GHI456")
+        assert exc.value.code == "INVALID_SESSION_TIME"

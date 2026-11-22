@@ -55,6 +55,21 @@ async def test_user_service_create_user(db_session: AsyncSession) -> None:
         )
     assert exc_info.value.code == "STUDENT_ID_EXISTS"
 
+    # Create user with student_id=None (branch 35->43)
+    teacher_user = await service.create_user(
+        db_session,
+        UserCreate(
+            email="service_teacher@example.com",
+            full_name="Service Teacher",
+            role=UserRole.TEACHER,
+            password="Password123",
+            student_id=None,
+        ),
+    )
+    assert teacher_user.id is not None
+    assert teacher_user.student_id is None
+    assert teacher_user.role == UserRole.TEACHER.value
+
 
 @pytest.mark.asyncio
 async def test_user_service_get_by_id(db_session: AsyncSession) -> None:
@@ -77,6 +92,15 @@ async def test_user_service_list_users(db_session: AsyncSession) -> None:
     assert len(page.items) >= 2
     assert page.page == 1
     assert page.size == 10
+
+    # Search with empty / whitespace string
+    page_empty_search = await user_service.list_users(db_session, page=1, size=10, search="   ")
+    assert page_empty_search.total >= 2
+
+    # Search with query term
+    page_search = await user_service.list_users(db_session, page=1, size=10, search="list1")
+    assert page_search.total == 1
+    assert page_search.items[0].email == "list1@example.com"
 
 
 @pytest.mark.asyncio
@@ -137,6 +161,15 @@ async def test_user_service_update_user(db_session: AsyncSession) -> None:
             UserUpdate(student_id="STU_OTHER"),
         )
     assert exc_info.value.code == "STUDENT_ID_EXISTS"
+
+    # Role change to non-student (branch 127->128)
+    updated_role = await user_service.update_user(
+        db_session,
+        user.id,
+        UserUpdate(role=UserRole.TEACHER, student_id=None),
+    )
+    assert updated_role.role == UserRole.TEACHER.value
+    assert updated_role.student_id is None
 
     # Teacher cannot have student_id
     teacher = await make_user(
