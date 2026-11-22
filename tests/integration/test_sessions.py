@@ -3,6 +3,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -388,6 +389,7 @@ async def test_session_lifecycle_endpoints(
 
 @pytest.mark.asyncio
 async def test_session_crossing_midnight_utc_lifecycle_and_checkin(
+    app: FastAPI,
     client: AsyncClient,
     db_session: AsyncSession,
     teacher_user: User,
@@ -428,7 +430,18 @@ async def test_session_crossing_midnight_utc_lifecycle_and_checkin(
     assert overlap_res.status_code == 409
     assert overlap_res.json()["error"]["code"] == "SESSION_OVERLAP"
 
-    # 3. Open session
+    # Helper clock class
+    class FrozenClock:
+        def __init__(self, frozen_time: datetime) -> None:
+            self._frozen_time = frozen_time
+
+        def now(self) -> datetime:
+            return self._frozen_time
+
+    from app.api.deps import get_clock
+
+    # 3. Open session at 23:00 UTC (code valid until 23:15 UTC)
+    app.dependency_overrides[get_clock] = lambda: FrozenClock(start_time)
     open_res = await client.post(
         f"/api/v1/sessions/{session_id}/open",
         headers=auth_headers(teacher_user),
@@ -437,16 +450,6 @@ async def test_session_crossing_midnight_utc_lifecycle_and_checkin(
     checkin_code = open_res.json()["checkin_code"]
 
     # 4. Check-in before midnight (23:10 UTC, 10 min after start <= 15 min threshold -> PRESENT)
-    from app.api.deps import get_clock
-    from app.main import app
-
-    class FrozenClock:
-        def __init__(self, frozen_time: datetime) -> None:
-            self._frozen_time = frozen_time
-
-        def now(self) -> datetime:
-            return self._frozen_time
-
     app.dependency_overrides[get_clock] = lambda: FrozenClock(
         datetime(2026, 12, 1, 23, 10, tzinfo=UTC)
     )
@@ -458,14 +461,25 @@ async def test_session_crossing_midnight_utc_lifecycle_and_checkin(
     assert ci1.status_code == 200
     assert ci1.json()["status"] == "present"
 
-    # 5. Check-in after midnight (00:05 UTC next day, 65 min after start > 15 min threshold -> LATE)
+    # 5. Teacher regenerates code after midnight (00:00 UTC, code now valid until 00:15 UTC)
+    app.dependency_overrides[get_clock] = lambda: FrozenClock(
+        datetime(2026, 12, 2, 0, 0, tzinfo=UTC)
+    )
+    regen_res = await client.post(
+        f"/api/v1/sessions/{session_id}/regenerate-code",
+        headers=auth_headers(teacher_user),
+    )
+    assert regen_res.status_code == 200
+    new_code = regen_res.json()["checkin_code"]
+
+    # 6. Check-in after midnight (00:05 UTC next day, 65 min after start > 15 min threshold -> LATE)
     app.dependency_overrides[get_clock] = lambda: FrozenClock(
         datetime(2026, 12, 2, 0, 5, tzinfo=UTC)
     )
     ci2 = await client.post(
         f"/api/v1/sessions/{session_id}/check-in",
         headers=auth_headers(s2),
-        json={"code": checkin_code},
+        json={"code": new_code},
     )
     assert ci2.status_code == 200
     assert ci2.json()["status"] == "late"
