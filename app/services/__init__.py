@@ -3,6 +3,7 @@ from app.services.auth_service import AuthService, auth_service
 from app.services.course_service import CourseService, course_service
 from app.services.enrollment_service import EnrollmentService, enrollment_service
 from app.services.permissions import ensure_can_manage_course, ensure_can_view_course
+from app.services.report_service import ReportService, report_service
 from app.services.session_service import (
     ALLOWED_TRANSITIONS,
     SessionService,
@@ -19,6 +20,7 @@ __all__ = [
     "AuthService",
     "CourseService",
     "EnrollmentService",
+    "ReportService",
     "SessionService",
     "UserService",
     "attendance_service",
@@ -29,6 +31,7 @@ __all__ = [
     "ensure_can_view_course",
     "generate_checkin_code",
     "on_session_closed",
+    "report_service",
     "session_service",
     "user_service",
     "validate_transition",

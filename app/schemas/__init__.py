@@ -17,6 +17,15 @@ from app.schemas.course import (
     CourseUpdate,
 )
 from app.schemas.enrollment import EnrollmentCreate, EnrollmentRead, EnrollmentResult
+from app.schemas.report import (
+    AtRiskStudent,
+    CourseReport,
+    DashboardSummary,
+    SessionSummary,
+    StudentCourseSummary,
+    StudentFullReport,
+    StudentReportItem,
+)
 from app.schemas.session import (
     RecurringSessionCreate,
     RecurringSessionResult,
@@ -29,15 +38,18 @@ from app.schemas.session import (
 from app.schemas.user import PasswordChange, UserCreate, UserRead, UserResponse, UserUpdate
 
 __all__ = [
+    "AtRiskStudent",
     "AttendanceRead",
     "AttendanceUpdate",
     "BulkMarkRequest",
     "CheckInRequest",
     "CourseCreate",
     "CourseRead",
+    "CourseReport",
     "CourseResponse",
     "CourseTeacherSummary",
     "CourseUpdate",
+    "DashboardSummary",
     "EnrollmentCreate",
     "EnrollmentRead",
     "EnrollmentResult",
@@ -55,7 +67,11 @@ __all__ = [
     "SessionOpenResponse",
     "SessionRead",
     "SessionResponse",
+    "SessionSummary",
     "SessionUpdate",
+    "StudentCourseSummary",
+    "StudentFullReport",
+    "StudentReportItem",
     "TokenResponse",
     "UserCreate",
     "UserRead",
