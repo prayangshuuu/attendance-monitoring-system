@@ -9,7 +9,7 @@ class LoginRequest(BaseModel):
         "json_schema_extra": {
             "example": {
                 "email": "student@example.com",
-                "password": "Password123!",
+                "password": "Password123!",  # nosec B105
             }
         }
     }

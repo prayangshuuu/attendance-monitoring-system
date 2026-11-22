@@ -9,7 +9,7 @@ from app.models.enums import UserRole
 
 PASSWORD_REGEX = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{8,}$")
 PASSWORD_REQUIREMENT_MSG = (
-    "Password must be at least 8 characters long and contain at least one letter and one number"
+    "Password must be at least 8 characters long and contain at least one letter and one number"  # nosec B105
 )
 
 
@@ -37,7 +37,7 @@ class UserCreate(BaseModel):
                 "email": "student@example.com",
                 "full_name": "Alice Smith",
                 "role": "student",
-                "password": "Password123!",
+                "password": "Password123!",  # nosec B105
                 "student_id": "STU1001",
             }
         }
