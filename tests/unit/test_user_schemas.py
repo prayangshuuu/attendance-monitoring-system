@@ -199,3 +199,6 @@ def test_user_full_name_whitespace_validation() -> None:
     # UserUpdate valid full_name with whitespace should be stripped
     u_up = UserUpdate(full_name="  Updated Name  ")
     assert u_up.full_name == "Updated Name"
+
+    u_up_none = UserUpdate(full_name=None)
+    assert u_up_none.full_name is None

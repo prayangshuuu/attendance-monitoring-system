@@ -214,16 +214,9 @@ class UserService:
             )
         user = await self.get_user_by_id(session, user_id)
         user.is_active = False
-        try:
-            await self.user_repo.update(session, user)
-            await session.commit()
-            await session.refresh(user)
-        except IntegrityError:
-            await session.rollback()
-            raise ConflictError(
-                "User conflict on update (email or student_id already taken)",
-                code="USER_CONFLICT",
-            ) from None
+        await self.user_repo.update(session, user)
+        await session.commit()
+        await session.refresh(user)
         return user
 
     async def change_password(
