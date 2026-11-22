@@ -213,10 +213,13 @@ async def test_user_service_change_password(db_session: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_user_service_import_csv_empty(db_session: AsyncSession) -> None:
-    assert await user_service.import_users_csv(db_session, "") == []
-    assert await user_service.import_users_csv(db_session, b"") == []
-    header_only = "email,full_name,role,student_id,password\n"
-    assert await user_service.import_users_csv(db_session, header_only) == []
+    for empty_input in ("", b"", "email,full_name,role,student_id,password\n"):
+        with pytest.raises(ValidationAppError) as exc_info:
+            await user_service.import_users_csv(db_session, empty_input)
+        assert exc_info.value.code == "CSV_EMPTY_ERROR"
+        assert exc_info.value.details["errors"][0]["field"] == "file"
+        msg = exc_info.value.details["errors"][0]["message"]
+        assert msg == "CSV file contains no user data rows"
 
 
 @pytest.mark.asyncio

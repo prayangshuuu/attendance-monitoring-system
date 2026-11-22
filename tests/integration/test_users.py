@@ -460,3 +460,25 @@ async def test_csv_import_atomic_rollback_on_failure(
         json={"email": "csv_atomic_good@example.com", "password": "Password123"},
     )
     assert login_res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_csv_import_empty_and_header_only(
+    client: AsyncClient,
+    admin_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    headers = auth_headers(admin_user)
+
+    # Completely empty file
+    files = {"file": ("empty.csv", io.BytesIO(b""), "text/csv")}
+    res = await client.post("/api/v1/users/import", headers=headers, files=files)
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == "CSV_EMPTY_ERROR"
+
+    # Header-only file
+    header_content = b"email,full_name,role,student_id,password\n"
+    files = {"file": ("header.csv", io.BytesIO(header_content), "text/csv")}
+    res = await client.post("/api/v1/users/import", headers=headers, files=files)
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == "CSV_EMPTY_ERROR"

@@ -247,7 +247,20 @@ class UserService:
             content = file_content
 
         if not content.strip():
-            return []
+            raise ValidationAppError(
+                "CSV file contains no user data rows",
+                code="CSV_EMPTY_ERROR",
+                details={
+                    "errors": [
+                        {
+                            "row": 0,
+                            "field": "file",
+                            "message": "CSV file contains no user data rows",
+                            "error": "CSV file contains no user data rows",
+                        }
+                    ]
+                },
+            )
 
         reader = csv.DictReader(io.StringIO(content))
         cleaned_fieldnames = (
@@ -279,7 +292,20 @@ class UserService:
 
         rows = list(reader)
         if not rows:
-            return []
+            raise ValidationAppError(
+                "CSV file contains no user data rows",
+                code="CSV_EMPTY_ERROR",
+                details={
+                    "errors": [
+                        {
+                            "row": 0,
+                            "field": "file",
+                            "message": "CSV file contains no user data rows",
+                            "error": "CSV file contains no user data rows",
+                        }
+                    ]
+                },
+            )
 
         valid_roles = {r.value for r in UserRole}
 
