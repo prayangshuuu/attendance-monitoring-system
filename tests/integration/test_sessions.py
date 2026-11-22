@@ -384,3 +384,90 @@ async def test_session_lifecycle_endpoints(
     )
     assert res.status_code == 409
     assert res.json()["error"]["code"] == "INVALID_SESSION_TRANSITION"
+
+
+@pytest.mark.asyncio
+async def test_session_crossing_midnight_utc_lifecycle_and_checkin(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    teacher_user: User,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    course = await make_course(db_session, teacher=teacher_user)
+    s1 = await make_user(db_session, role=UserRole.STUDENT, full_name="Student Early")
+    s2 = await make_user(db_session, role=UserRole.STUDENT, full_name="Student Midnight")
+    await make_enrollment(db_session, course=course, student=s1)
+    await make_enrollment(db_session, course=course, student=s2)
+
+    start_time = datetime(2026, 12, 1, 23, 0, tzinfo=UTC)
+    end_time = datetime(2026, 12, 2, 1, 0, tzinfo=UTC)
+
+    # 1. Schedule session crossing midnight UTC
+    res = await client.post(
+        f"/api/v1/courses/{course.id}/sessions",
+        headers=auth_headers(teacher_user),
+        json={
+            "starts_at": start_time.isoformat(),
+            "ends_at": end_time.isoformat(),
+            "late_after_minutes": 15,
+        },
+    )
+    assert res.status_code == 201
+    session_id = res.json()["id"]
+
+    # 2. Overlap detection across midnight: attempt to create overlapping session 23:30 - 00:30
+    overlap_res = await client.post(
+        f"/api/v1/courses/{course.id}/sessions",
+        headers=auth_headers(teacher_user),
+        json={
+            "starts_at": datetime(2026, 12, 1, 23, 30, tzinfo=UTC).isoformat(),
+            "ends_at": datetime(2026, 12, 2, 0, 30, tzinfo=UTC).isoformat(),
+            "late_after_minutes": 10,
+        },
+    )
+    assert overlap_res.status_code == 409
+    assert overlap_res.json()["error"]["code"] == "SESSION_OVERLAP"
+
+    # 3. Open session
+    open_res = await client.post(
+        f"/api/v1/sessions/{session_id}/open",
+        headers=auth_headers(teacher_user),
+    )
+    assert open_res.status_code == 200
+    checkin_code = open_res.json()["checkin_code"]
+
+    # 4. Check-in before midnight (23:10 UTC, 10 min after start <= 15 min threshold -> PRESENT)
+    from app.api.deps import get_clock
+    from app.main import app
+
+    class FrozenClock:
+        def __init__(self, frozen_time: datetime) -> None:
+            self._frozen_time = frozen_time
+
+        def now(self) -> datetime:
+            return self._frozen_time
+
+    app.dependency_overrides[get_clock] = lambda: FrozenClock(
+        datetime(2026, 12, 1, 23, 10, tzinfo=UTC)
+    )
+    ci1 = await client.post(
+        f"/api/v1/sessions/{session_id}/check-in",
+        headers=auth_headers(s1),
+        json={"code": checkin_code},
+    )
+    assert ci1.status_code == 200
+    assert ci1.json()["status"] == "present"
+
+    # 5. Check-in after midnight (00:05 UTC next day, 65 min after start > 15 min threshold -> LATE)
+    app.dependency_overrides[get_clock] = lambda: FrozenClock(
+        datetime(2026, 12, 2, 0, 5, tzinfo=UTC)
+    )
+    ci2 = await client.post(
+        f"/api/v1/sessions/{session_id}/check-in",
+        headers=auth_headers(s2),
+        json={"code": checkin_code},
+    )
+    assert ci2.status_code == 200
+    assert ci2.json()["status"] == "late"
+
+    app.dependency_overrides.pop(get_clock, None)

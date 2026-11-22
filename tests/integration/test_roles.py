@@ -147,6 +147,35 @@ async def test_inactive_user_rejected_by_current_user_dependency(
 
 
 @pytest.mark.asyncio
+async def test_role_updated_in_db_immediately_effective_with_old_token(
+    role_client: AsyncClient,
+    db_session: AsyncSession,
+    auth_headers: Callable[[User], dict[str, str]],
+) -> None:
+    user = await make_user(db_session, role=UserRole.STUDENT)
+    student_headers = auth_headers(user)
+
+    resp_before = await role_client.get(
+        "/test-roles/teacher-or-admin",
+        headers=student_headers,
+    )
+    assert resp_before.status_code == 403
+
+    user.role = UserRole.TEACHER.value
+    user.student_id = None
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    resp_after = await role_client.get(
+        "/test-roles/teacher-or-admin",
+        headers=student_headers,
+    )
+    assert resp_after.status_code == 200
+    assert resp_after.json()["message"] == f"Hello {UserRole.TEACHER.value}"
+
+
+@pytest.mark.asyncio
 async def test_openapi_swagger_security_scheme_exists(client: AsyncClient) -> None:
     response = await client.get("/openapi.json")
     assert response.status_code == 200
