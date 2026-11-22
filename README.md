@@ -78,10 +78,12 @@ uv run pytest -m integration
 TEST_DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/attendance_test" uv run pytest
 ```
 
-Linting and type checking:
+Linting, type checking & security audits:
 ```bash
 uv run ruff check .
 uv run mypy app
+uv run bandit -r app
+uv run pip-audit
 ```
 
 ## Environment Variables
