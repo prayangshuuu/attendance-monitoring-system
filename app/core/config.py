@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "Attendance Monitoring System"
     ENVIRONMENT: str = "development"
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/attendance"
+    DATABASE_POOL_SIZE: int = 20
+    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_TIMEOUT: int = 30
+    DATABASE_POOL_RECYCLE: int = 1800
     JWT_SECRET_KEY: str = "change-me-32-byte-long-secret-key-attendance-system"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30

@@ -22,3 +22,12 @@ async def test_lifespan_handler() -> None:
     app = create_app()
     async with lifespan(app):
         pass
+
+
+@pytest.mark.asyncio
+async def test_get_db_generator_exception_rollback() -> None:
+    generator = get_db()
+    session = await anext(generator)
+    assert isinstance(session, AsyncSession)
+    with pytest.raises(RuntimeError, match="Simulated database failure"):
+        await generator.athrow(RuntimeError("Simulated database failure"))

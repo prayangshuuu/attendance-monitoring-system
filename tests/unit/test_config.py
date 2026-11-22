@@ -106,3 +106,16 @@ def test_production_settings_insecure_admin_password_rejected(insecure_pwd: str)
             JWT_SECRET_KEY="a-very-strong-production-secret-key-that-is-long-enough",
             FIRST_ADMIN_PASSWORD=insecure_pwd,
         )
+
+
+def test_database_pool_settings() -> None:
+    settings = Settings(
+        DATABASE_POOL_SIZE=30,
+        DATABASE_MAX_OVERFLOW=15,
+        DATABASE_POOL_TIMEOUT=45,
+        DATABASE_POOL_RECYCLE=3600,
+    )
+    assert settings.DATABASE_POOL_SIZE == 30
+    assert settings.DATABASE_MAX_OVERFLOW == 15
+    assert settings.DATABASE_POOL_TIMEOUT == 45
+    assert settings.DATABASE_POOL_RECYCLE == 3600
