@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import AttendanceMethod, AttendanceStatus
 
@@ -14,6 +14,14 @@ class CheckInRequest(BaseModel):
         description="Session check-in code",
         examples=["ABC123"],
     )
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, v: str) -> str:
+        cleaned = v.strip().upper()
+        if not cleaned:
+            raise ValueError("Check-in code cannot be empty or whitespace only")
+        return cleaned
 
 
 class AttendanceRead(BaseModel):

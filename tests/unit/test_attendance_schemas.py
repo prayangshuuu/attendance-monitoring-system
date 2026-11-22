@@ -26,6 +26,14 @@ def test_check_in_request_invalid_empty() -> None:
         CheckInRequest(code="")
 
 
+def test_check_in_request_whitespace_code_rejected() -> None:
+    with pytest.raises(ValidationError):
+        CheckInRequest(code="   ")
+
+    req = CheckInRequest(code=" abc123 ")
+    assert req.code == "ABC123"
+
+
 def test_attendance_read_valid() -> None:
     rec_id = uuid.uuid4()
     s_id = uuid.uuid4()

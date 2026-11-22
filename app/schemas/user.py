@@ -49,6 +49,14 @@ class UserCreate(BaseModel):
     password: str
     student_id: str | None = None
 
+    @field_validator("full_name")
+    @classmethod
+    def normalize_full_name(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("full_name cannot be empty or whitespace only")
+        return cleaned
+
     @field_validator("email")
     @classmethod
     def lowercase_email(cls, v: str) -> str:
@@ -86,6 +94,16 @@ class UserUpdate(BaseModel):
     role: UserRole | None = None
     student_id: str | None = None
     is_active: bool | None = None
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_full_name(cls, v: str | None) -> str | None:
+        if v is not None:
+            cleaned = v.strip()
+            if not cleaned:
+                raise ValueError("full_name cannot be empty or whitespace only")
+            return cleaned
+        return None
 
     @field_validator("email")
     @classmethod

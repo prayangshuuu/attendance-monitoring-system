@@ -167,3 +167,35 @@ def test_password_change_validation() -> None:
     with pytest.raises(ValidationError) as exc_info:
         PasswordChange(old_password="OldPassword1", new_password="weak")
     assert "at least one letter and one number" in str(exc_info.value)
+
+
+def test_user_full_name_whitespace_validation() -> None:
+    # Leading/trailing whitespace should be stripped
+    u = UserCreate(
+        email="test@example.com",
+        full_name="  Jane Doe  ",
+        role=UserRole.STUDENT,
+        password="Password123!",
+        student_id="STU1001",
+    )
+    assert u.full_name == "Jane Doe"
+
+    # Whitespace-only full_name should be rejected
+    with pytest.raises(ValidationError) as exc:
+        UserCreate(
+            email="test@example.com",
+            full_name="   ",
+            role=UserRole.STUDENT,
+            password="Password123!",
+            student_id="STU1001",
+        )
+    assert "full_name cannot be empty or whitespace only" in str(exc.value)
+
+    # UserUpdate whitespace-only full_name should be rejected
+    with pytest.raises(ValidationError) as exc_up:
+        UserUpdate(full_name="   ")
+    assert "full_name cannot be empty or whitespace only" in str(exc_up.value)
+
+    # UserUpdate valid full_name with whitespace should be stripped
+    u_up = UserUpdate(full_name="  Updated Name  ")
+    assert u_up.full_name == "Updated Name"
