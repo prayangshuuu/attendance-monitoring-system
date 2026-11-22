@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -352,6 +353,12 @@ class SessionService:
         try:
             await on_session_closed(session, updated)
             await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise ConflictError(
+                "Conflict closing session due to concurrent check-in. Please retry.",
+                code="CONCURRENT_MODIFICATION",
+            ) from None
         except Exception:
             await session.rollback()
             raise

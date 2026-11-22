@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -540,3 +541,28 @@ async def test_close_and_cancel_session_lifecycle(db_session: AsyncSession) -> N
     with pytest.raises(ConflictError) as exc3:
         await session_service.cancel_session(db_session, s_open2.id, teacher)
     assert exc3.value.code == "INVALID_SESSION_TRANSITION"
+
+
+@pytest.mark.asyncio
+async def test_close_session_integrity_error_rolls_back_and_raises_conflict(
+    db_session: AsyncSession,
+) -> None:
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    s_open = await make_session(
+        db_session, course=course, status=SessionStatus.OPEN.value, checkin_code="ABC123"
+    )
+
+    with (
+        patch.object(
+            db_session,
+            "commit",
+            AsyncMock(side_effect=IntegrityError("conflict", params={}, orig=Exception())),
+        ),
+        patch.object(db_session, "rollback", AsyncMock()) as mock_rollback,
+    ):
+        with pytest.raises(ConflictError) as exc:
+            await session_service.close_session(db_session, s_open.id, teacher)
+        assert exc.value.code == "CONCURRENT_MODIFICATION"
+        assert exc.value.status_code == 409
+        mock_rollback.assert_awaited_once()
