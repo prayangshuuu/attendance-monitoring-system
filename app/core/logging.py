@@ -45,9 +45,19 @@ def mask_string(value: str) -> str:
     return _KEY_VALUE_PATTERN.sub(r"\1\2******\4", masked)
 
 
-def mask_sensitive_value(key: str, val: Any) -> Any:
-    """Recursively masks sensitive values in dictionaries and lists."""
-    key_lower = key.lower()
+_UNSET = object()
+
+
+def mask_sensitive_value(key_or_val: Any = "", val: Any = _UNSET) -> Any:
+    """Recursively masks sensitive values in dictionaries, lists, and strings."""
+    if val is _UNSET:
+        key_str = ""
+        actual_val = key_or_val
+    else:
+        key_str = str(key_or_val)
+        actual_val = val
+
+    key_lower = key_str.lower()
     if (
         key_lower in SENSITIVE_FIELD_NAMES
         and not key_lower.endswith("_status_code")
@@ -55,16 +65,16 @@ def mask_sensitive_value(key: str, val: Any) -> Any:
     ):
         return "******"
 
-    if isinstance(val, dict):
-        return {str(k): mask_sensitive_value(str(k), v) for k, v in val.items()}
-    if isinstance(val, list):
+    if isinstance(actual_val, dict):
+        return {str(k): mask_sensitive_value(str(k), v) for k, v in actual_val.items()}
+    if isinstance(actual_val, list):
         return [
-            mask_sensitive_value(key, item) if isinstance(item, (dict, list)) else item
-            for item in val
+            mask_sensitive_value(key_str, item) if isinstance(item, (dict, list)) else item
+            for item in actual_val
         ]
-    if isinstance(val, str):
-        return mask_string(val)
-    return val
+    if isinstance(actual_val, str):
+        return mask_string(actual_val)
+    return actual_val
 
 
 class SensitiveDataFilter(logging.Filter):
@@ -89,7 +99,11 @@ class SensitiveDataFilter(logging.Filter):
                 record.msg = mask_string(formatted)
                 record.args = ()
             except Exception:
-                pass
+                if record.args:
+                    if isinstance(record.args, dict):
+                        record.args = mask_sensitive_value(record.args)
+                    elif isinstance(record.args, tuple):
+                        record.args = tuple(mask_sensitive_value(arg) for arg in record.args)
         elif isinstance(record.msg, str):
             record.msg = mask_string(record.msg)
         elif isinstance(record.msg, dict):

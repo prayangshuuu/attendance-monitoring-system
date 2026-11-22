@@ -231,8 +231,11 @@ class SessionService:
         new_ends_at = (
             data.ends_at if data.ends_at is not None else ensure_utc_datetime(class_session.ends_at)
         )
-        assert new_starts_at is not None
-        assert new_ends_at is not None
+        if new_starts_at is None or new_ends_at is None:
+            raise ValidationAppError(
+                "Session start and end times must be valid",
+                code="INVALID_SESSION_TIME",
+            )
 
         if new_ends_at <= new_starts_at:
             raise ValidationAppError("ends_at must be after starts_at", code="VALIDATION_ERROR")

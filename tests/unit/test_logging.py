@@ -136,6 +136,41 @@ def test_sensitive_data_filter_dict_message_and_args() -> None:
     filter_obj.filter(dict_args_record)
     assert "raw" not in dict_args_record.getMessage()
 
+    # Mismatched format arguments that cause getMessage() to raise exception
+    mismatched_tuple = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname="test.py",
+        lineno=1,
+        msg="Invalid format %d",
+        args=("password=supersecret",),
+        exc_info=None,
+    )
+    filter_obj.filter(mismatched_tuple)
+    assert mismatched_tuple.args[0] == "password=******"
+
+    mismatched_dict = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname="test.py",
+        lineno=1,
+        msg="Invalid format %(missing)s",
+        args=(),
+        exc_info=None,
+    )
+    mismatched_dict.args = {"password": "supersecret"}
+    filter_obj.filter(mismatched_dict)
+    assert isinstance(mismatched_dict.args, dict)
+    assert mismatched_dict.args["password"] == "******"
+
+
+def test_mask_sensitive_value_single_argument() -> None:
+    assert mask_sensitive_value("password=secret123") == "password=******"
+    assert mask_sensitive_value({"password": "secret", "user": "alice"}) == {
+        "password": "******",
+        "user": "alice",
+    }
+
 
 def test_json_formatter_production() -> None:
     req_token = request_id_ctx_var.set("req-12345")

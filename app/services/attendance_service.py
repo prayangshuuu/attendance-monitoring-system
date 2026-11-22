@@ -1,5 +1,5 @@
 import secrets
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -88,7 +88,8 @@ class AttendanceService:
 
         # 5. CODE_EXPIRED (400) (compare with clock.now())
         now_dt = ensure_utc_datetime(active_clock.now())
-        assert now_dt is not None
+        if now_dt is None:
+            now_dt = datetime.now(UTC)
         code_expires_at = ensure_utc_datetime(class_session.code_expires_at)
         if code_expires_at is not None and now_dt > code_expires_at:
             raise ValidationAppError("Check-in code has expired", code="CODE_EXPIRED")
@@ -105,7 +106,8 @@ class AttendanceService:
 
         # Calculate status: if past late threshold -> LATE, else PRESENT
         starts_at = ensure_utc_datetime(class_session.starts_at)
-        assert starts_at is not None
+        if starts_at is None:
+            raise ValidationAppError("Session start time is invalid", code="INVALID_SESSION_TIME")
         late_threshold = starts_at + timedelta(minutes=class_session.late_after_minutes)
         status = AttendanceStatus.LATE if now_dt > late_threshold else AttendanceStatus.PRESENT
 
