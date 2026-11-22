@@ -121,6 +121,7 @@ class SessionService:
             status=SessionStatus.SCHEDULED.value,
         )
         created = await session_repository.create(session, class_session)
+        await session.commit()
         return SessionRead.model_validate(created)
 
     async def create_recurring(
@@ -164,6 +165,8 @@ class SessionService:
             cur += timedelta(days=7)
 
         created_sessions = await session_repository.create_many(session, to_create)
+        if created_sessions:
+            await session.commit()
         return RecurringSessionResult(
             created=[SessionRead.model_validate(s) for s in created_sessions],
             skipped=skipped,
@@ -259,6 +262,7 @@ class SessionService:
             class_session.late_after_minutes = data.late_after_minutes
 
         updated = await session_repository.update(session, class_session)
+        await session.commit()
         return SessionRead.model_validate(updated)
 
     async def open_session(
@@ -284,6 +288,7 @@ class SessionService:
         class_session.code_expires_at = code_expires_at
 
         updated = await session_repository.update(session, class_session)
+        await session.commit()
         return SessionOpenResponse(
             id=updated.id,
             status=SessionStatus.OPEN,
@@ -319,6 +324,7 @@ class SessionService:
         class_session.code_expires_at = code_expires_at
 
         updated = await session_repository.update(session, class_session)
+        await session.commit()
         return SessionOpenResponse(
             id=updated.id,
             status=SessionStatus.OPEN,
@@ -369,6 +375,7 @@ class SessionService:
         class_session.code_expires_at = None
 
         updated = await session_repository.update(session, class_session)
+        await session.commit()
         return SessionRead.model_validate(updated)
 
 
