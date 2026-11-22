@@ -1,5 +1,7 @@
 # Attendance Monitoring System
 
+[![CI](https://github.com/prayangshuuu/attendance-monitoring-system/actions/workflows/ci.yml/badge.svg)](https://github.com/prayangshuuu/attendance-monitoring-system/actions/workflows/ci.yml)
+
 Backend API service for course attendance monitoring and tracking.
 
 **Status:** in development
@@ -35,6 +37,14 @@ uv run python scripts/create_admin.py
 - `Enrollment`: Student enrollments associating students with courses.
 - `ClassSession`: Individual class meetings with schedule intervals, check-in codes, and session status lifecycle.
 - `AttendanceRecord`: Check-in log entries tracking student attendance statuses, methods, and audit notes.
+
+## Run with Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+docker compose exec api python scripts/seed.py
+```
 
 ## Quick Start
 
