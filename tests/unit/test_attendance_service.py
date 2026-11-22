@@ -149,6 +149,125 @@ async def test_check_in_late_status_calculation(db_session: AsyncSession) -> Non
 
 
 @pytest.mark.asyncio
+async def test_check_in_late_threshold_exact_boundaries(db_session: AsyncSession) -> None:
+    """Verify check-in attendance status at exact boundary values.
+
+    Tests both T == threshold and T > threshold.
+    """
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    student_on_time = await make_user(db_session, role=UserRole.STUDENT)
+    student_late = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=student_on_time)
+    await make_enrollment(db_session, course=course, student=student_late)
+
+    session_start = datetime(2026, 11, 22, 10, 0, tzinfo=UTC)
+    session_obj = await make_session(
+        db_session,
+        course=course,
+        starts_at=session_start,
+        ends_at=session_start + timedelta(hours=2),
+        status=SessionStatus.OPEN.value,
+        checkin_code="BOUND1",
+        code_expires_at=session_start + timedelta(minutes=30),
+        late_after_minutes=10,
+    )
+
+    # Exact threshold: now == starts_at + 10 min -> PRESENT
+    exact_clock = FrozenClock(session_start + timedelta(minutes=10))
+    rec1 = await attendance_service.check_in(
+        db_session, student_on_time, session_obj.id, "BOUND1", clock=exact_clock
+    )
+    assert rec1.status == AttendanceStatus.PRESENT.value
+
+    # 1 second past threshold: now == starts_at + 10 min + 1 sec -> LATE
+    late_clock = FrozenClock(session_start + timedelta(minutes=10, seconds=1))
+    rec2 = await attendance_service.check_in(
+        db_session, student_late, session_obj.id, "BOUND1", clock=late_clock
+    )
+    assert rec2.status == AttendanceStatus.LATE.value
+
+
+@pytest.mark.asyncio
+async def test_check_in_late_after_zero_minutes_boundary(db_session: AsyncSession) -> None:
+    """When late_after_minutes == 0, check-in at starts_at is PRESENT, any time after is LATE."""
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    s1 = await make_user(db_session, role=UserRole.STUDENT)
+    s2 = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=s1)
+    await make_enrollment(db_session, course=course, student=s2)
+
+    session_start = datetime(2026, 11, 22, 10, 0, tzinfo=UTC)
+    session_obj = await make_session(
+        db_session,
+        course=course,
+        starts_at=session_start,
+        ends_at=session_start + timedelta(hours=1),
+        status=SessionStatus.OPEN.value,
+        checkin_code="ZERO00",
+        code_expires_at=session_start + timedelta(minutes=30),
+        late_after_minutes=0,
+    )
+
+    rec1 = await attendance_service.check_in(
+        db_session, s1, session_obj.id, "ZERO00", clock=FrozenClock(session_start)
+    )
+    assert rec1.status == AttendanceStatus.PRESENT.value
+
+    rec2 = await attendance_service.check_in(
+        db_session,
+        s2,
+        session_obj.id,
+        "ZERO00",
+        clock=FrozenClock(session_start + timedelta(seconds=1)),
+    )
+    assert rec2.status == AttendanceStatus.LATE.value
+
+
+@pytest.mark.asyncio
+async def test_check_in_code_expiration_exact_boundary(db_session: AsyncSession) -> None:
+    """Verify check-in succeeds at exact code_expires_at, but fails 1 second after."""
+    teacher = await make_user(db_session, role=UserRole.TEACHER)
+    course = await make_course(db_session, teacher=teacher)
+    s1 = await make_user(db_session, role=UserRole.STUDENT)
+    s2 = await make_user(db_session, role=UserRole.STUDENT)
+    await make_enrollment(db_session, course=course, student=s1)
+    await make_enrollment(db_session, course=course, student=s2)
+
+    session_start = datetime(2026, 11, 22, 10, 0, tzinfo=UTC)
+    expiration_time = session_start + timedelta(minutes=15)
+    session_obj = await make_session(
+        db_session,
+        course=course,
+        starts_at=session_start,
+        ends_at=session_start + timedelta(hours=1),
+        status=SessionStatus.OPEN.value,
+        checkin_code="EXPIRE",
+        code_expires_at=expiration_time,
+        late_after_minutes=20,
+    )
+
+    # Exactly at expiration_time: succeeds
+    rec = await attendance_service.check_in(
+        db_session, s1, session_obj.id, "EXPIRE", clock=FrozenClock(expiration_time)
+    )
+    assert rec.status == AttendanceStatus.PRESENT.value
+
+    # 1 second after expiration_time: fails with CODE_EXPIRED
+    with pytest.raises(ValidationAppError) as exc:
+        await attendance_service.check_in(
+            db_session,
+            s2,
+            session_obj.id,
+            "EXPIRE",
+            clock=FrozenClock(expiration_time + timedelta(seconds=1)),
+        )
+    assert exc.value.code == "CODE_EXPIRED"
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_check_in_race_safety_integrity_error(db_session: AsyncSession) -> None:
     teacher = await make_user(db_session, role=UserRole.TEACHER)
     course = await make_course(db_session, teacher=teacher)

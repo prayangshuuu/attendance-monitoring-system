@@ -37,6 +37,21 @@ def test_sanitize_csv_cell() -> None:
     assert sanitize_csv_cell("-123") == "'-123"
     assert sanitize_csv_cell("@admin") == "'@admin"
     assert sanitize_csv_cell(' =HYPERLINK("test")') == '\' =HYPERLINK("test")'
+    assert sanitize_csv_cell("  +cmd") == "'  +cmd"
+    assert sanitize_csv_cell("  -123") == "'  -123"
+    assert sanitize_csv_cell("  @admin") == "'  @admin"
+
+    # OWASP Tab (\t) and Carriage Return (\r) formula injection vectors
+    assert sanitize_csv_cell("\tcalc") == "'\tcalc"
+    assert sanitize_csv_cell("\rcmd") == "'\rcmd"
+    assert sanitize_csv_cell("\t") == "'\t"
+    assert sanitize_csv_cell("\r") == "'\r"
+    assert sanitize_csv_cell(" \t=calc") == "' \t=calc"
+    assert sanitize_csv_cell(" \rcmd") == "' \rcmd"
+    assert sanitize_csv_cell("  \tHello") == "'  \tHello"
+    assert sanitize_csv_cell("  \rHello") == "'  \rHello"
+    assert sanitize_csv_cell("\n=calc") == "'\n=calc"
+    assert sanitize_csv_cell("   ") == "   "
 
 
 def test_normalize_datetime() -> None:
