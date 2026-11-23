@@ -1,4 +1,5 @@
 import hmac
+import logging
 import secrets
 from collections.abc import Mapping
 from typing import Annotated, Any
@@ -19,6 +20,7 @@ from app.models.user import User
 from app.repositories.user_repository import user_repository
 from app.services.auth_service import auth_service
 
+logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="app/templates")
 
 SAFE_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
@@ -129,8 +131,8 @@ async def verify_csrf(request: Request) -> None:
                 field_val = form.get("csrf_token")
                 if isinstance(field_val, str):
                     submitted_token = field_val
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to read form csrf_token: %s", exc)
 
     if not submitted_token:
         raise HTTPException(
@@ -183,8 +185,8 @@ async def get_optional_web_user(
         except AuthenticationError:
             # Token expired or invalid - fall through to refresh_token
             pass
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to resolve web user from access token: %s", exc)
 
     # 2. Attempt transparent refresh using refresh_token cookie
     refresh_token = request.cookies.get("refresh_token")
@@ -230,8 +232,8 @@ async def get_optional_web_user(
                     return user
         except AuthenticationError:
             pass
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to refresh web user tokens: %s", exc)
 
     return None
 
