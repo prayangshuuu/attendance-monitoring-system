@@ -93,6 +93,7 @@ class AttendanceRepository:
             stmt = (
                 select(AttendanceRecord)
                 .join(ClassSession, AttendanceRecord.session_id == ClassSession.id)
+                .options(selectinload(AttendanceRecord.session).selectinload(ClassSession.course))
                 .where(*conditions, ClassSession.course_id == course_id)
                 .order_by(AttendanceRecord.created_at.desc(), AttendanceRecord.id.desc())
                 .offset(max(0, (page - 1) * size))
@@ -102,6 +103,7 @@ class AttendanceRepository:
             count_stmt = select(func.count(AttendanceRecord.id)).where(*conditions)
             stmt = (
                 select(AttendanceRecord)
+                .options(selectinload(AttendanceRecord.session).selectinload(ClassSession.course))
                 .where(*conditions)
                 .order_by(AttendanceRecord.created_at.desc(), AttendanceRecord.id.desc())
                 .offset(max(0, (page - 1) * size))

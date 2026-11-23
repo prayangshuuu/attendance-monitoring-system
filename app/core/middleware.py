@@ -124,7 +124,10 @@ class SecurityHeadersMiddleware:
                 headers.append((b"x-content-type-options", b"nosniff"))
                 headers.append((b"x-frame-options", b"DENY"))
                 headers.append((b"referrer-policy", b"strict-origin-when-cross-origin"))
-                headers.append((b"content-security-policy", b"default-src 'self'"))
+                csp_policy = (
+                    b"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+                )
+                headers.append((b"content-security-policy", csp_policy))
 
                 if self.settings.ENVIRONMENT == "production":
                     headers.append(

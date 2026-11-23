@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}My Attendance History — Attendance Monitoring System{% endblock %}
+
+{% block content %}
+<div class="page stagger">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">My Attendance History</h1>
+      <p class="page-subtitle">Review your past attendance records across all enrolled courses.</p>
+    </div>
+    <div class="page-actions">
+      <a href="/student/check-in" class="btn btn-primary btn-sm">
+        {{ icons.icon("key", size=16) }}
+        <span>Check-in</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="stat-grid stagger">
+    {{ ui.stat_card("Present", count_present, subtitle="On this page", icon="check-circle") }}
+    {{ ui.stat_card("Late", count_late, subtitle="On this page", icon="clock") }}
+    {{ ui.stat_card("Absent", count_absent, subtitle="On this page", icon="x-circle") }}
+    {{ ui.stat_card("Excused", count_excused, subtitle="On this page", icon="info") }}
+  </div>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Attendance Records</h2>
+        <p class="card-subtitle">{{ total }} Total Records</p>
+      </div>
+    </div>
+
+    <form
+      method="get"
+      action="/student/attendance"
+      hx-get="/student/attendance"
+      hx-trigger="change, submit"
+      hx-target="#main-content"
+      hx-select="#main-content"
+      hx-swap="outerHTML"
+      hx-push-url="true"
+      class="toolbar"
+    >
+      <label for="course_id" class="form-label">Filter by Course</label>
+      <select id="course_id" name="course_id" class="form-select">
+        <option value="" {% if not selected_course_id %}selected{% endif %}>All Enrolled Courses</option>
+        {% for c in enrolled_courses %}
+          <option value="{{ c.id }}" {% if selected_course_id == c.id|string %}selected{% endif %}>{{ c.code }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-secondary btn-sm">
+        {{ icons.icon("search", size=14) }}
+        <span>Apply</span>
+      </button>
+      {% if selected_course_id %}
+        <a href="/student/attendance" class="btn btn-ghost btn-sm" title="Clear filter">
+          {{ icons.icon("x", size=14) }}
+          <span>Clear</span>
+        </a>
+      {% endif %}
+    </form>
+
+    {% if records %}
+      <div class="table-container stagger">
+        <table class="table responsive-table">
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Course</th>
+              <th scope="col">Session Time</th>
+              <th scope="col">Status</th>
+              <th scope="col">Method</th>
+              <th scope="col">Checked-in At</th>
+              <th scope="col">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in records %}
+              <tr>
+                <td data-label="Date" class="cell-primary">
+                  {{ r.session.starts_at.strftime('%Y-%m-%d') if r.session else '—' }}
+                </td>
+                <td data-label="Course">
+                  {% if r.session and r.session.course %}
+                    <div class="font-semibold">{{ r.session.course.code }}</div>
+                    <div class="text-xs text-muted">{{ r.session.course.title }}</div>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td data-label="Session Time" class="cell-muted">
+                  {% if r.session %}
+                    {{ r.session.starts_at.strftime('%H:%M') }} - {{ r.session.ends_at.strftime('%H:%M UTC') }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td data-label="Status">
+                  {% if r.status == 'present' %}
+                    <span class="badge badge-present">{{ icons.icon("check", size=12) }} Present</span>
+                  {% elif r.status == 'late' %}
+                    <span class="badge badge-late">{{ icons.icon("clock", size=12) }} Late</span>
+                  {% elif r.status == 'absent' %}
+                    <span class="badge badge-absent">{{ icons.icon("x", size=12) }} Absent</span>
+                  {% elif r.status == 'excused' %}
+                    <span class="badge badge-excused">{{ icons.icon("info", size=12) }} Excused</span>
+                  {% else %}
+                    <span class="badge badge-neutral">{{ r.status|capitalize }}</span>
+                  {% endif %}
+                </td>
+                <td data-label="Method">
+                  {% if r.method == 'code' %}
+                    <span class="badge badge-neutral">Code</span>
+                  {% elif r.method == 'manual' %}
+                    <span class="badge badge-neutral">Teacher Manual</span>
+                  {% else %}
+                    <span class="cell-muted">{{ r.method }}</span>
+                  {% endif %}
+                </td>
+                <td data-label="Checked-in At" class="cell-muted">
+                  {{ r.checked_in_at.strftime('%H:%M:%S UTC') if r.checked_in_at else '—' }}
+                </td>
+                <td data-label="Note" class="cell-muted">{{ r.note or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if total_pages > 1 %}
+        {% set qs = "course_id=" ~ selected_course_id ~ "&" if selected_course_id else "" %}
+        <div class="card-footer">
+          <nav class="pagination" aria-label="Pagination">
+            <div class="pagination-info">
+              Page <strong>{{ page }}</strong> of <strong>{{ total_pages }}</strong> ({{ total }} total items)
+            </div>
+            <div class="pagination-links">
+              {% if page > 1 %}
+                <a href="/student/attendance?{{ qs }}page={{ page - 1 }}&size={{ size }}" class="btn btn-secondary btn-sm" aria-label="Previous Page">
+                  {{ icons.icon("chevron-left", size=16) }}
+                  <span>Previous</span>
+                </a>
+              {% else %}
+                <button type="button" class="btn btn-secondary btn-sm" disabled aria-disabled="true">
+                  {{ icons.icon("chevron-left", size=16) }}
+                  <span>Previous</span>
+                </button>
+              {% endif %}
+              {% if page < total_pages %}
+                <a href="/student/attendance?{{ qs }}page={{ page + 1 }}&size={{ size }}" class="btn btn-secondary btn-sm" aria-label="Next Page">
+                  <span>Next</span>
+                  {{ icons.icon("chevron-right", size=16) }}
+                </a>
+              {% else %}
+                <button type="button" class="btn btn-secondary btn-sm" disabled aria-disabled="true">
+                  <span>Next</span>
+                  {{ icons.icon("chevron-right", size=16) }}
+                </button>
+              {% endif %}
+            </div>
+          </nav>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="card-body">
+        {{ ui.empty_state("No Attendance Records", "You do not have any recorded attendance sessions for this selection.", icon="clock") }}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

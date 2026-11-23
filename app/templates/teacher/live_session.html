@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+{% import "teacher/partials/_macros.html" as tm %}
+
+{% block title %}Live Session — {{ session.course.code }} — Teacher Portal{% endblock %}
+
+{% block content %}
+{% set checked_in = stats.present + stats.late %}
+{% set checkin_pct = ((checked_in / stats.total) * 100)|round(1) if stats.total else 0 %}
+<div class="page animate-in">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="/teacher/sessions">Sessions</a>
+    <span class="breadcrumb-sep">/</span>
+    <a href="/teacher/courses/{{ session.course.id }}">{{ session.course.code }}</a>
+    <span class="breadcrumb-sep">/</span>
+    <span>{{ session.starts_at.strftime('%b %d, %Y') }}</span>
+  </nav>
+
+  <header class="page-header">
+    <div class="page-header-text">
+      <div class="cluster">
+        <h1 class="page-title"><span class="font-mono">{{ session.course.code }}</span> — {{ session.course.title }}</h1>
+        {{ tm.session_status_badge(session.status) }}
+      </div>
+      <p class="page-subtitle">
+        {{ session.starts_at.strftime('%A, %B %d, %Y') }} ·
+        {{ session.starts_at.strftime('%H:%M') }} – {{ session.ends_at.strftime('%H:%M UTC') }} ·
+        Late after +{{ session.late_after_minutes }} min
+      </p>
+    </div>
+    <div class="page-actions">
+      {% if session.status == 'scheduled' %}
+        <form method="post" action="/teacher/sessions/{{ session.id }}/open">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+          <button type="submit" class="btn btn-primary">
+            {{ icons.icon("clock", size=16) }}
+            <span>Open Session &amp; Generate Code</span>
+          </button>
+        </form>
+      {% elif session.status == 'open' %}
+        <form method="post" action="/teacher/sessions/{{ session.id }}/regenerate-code">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+          <button type="submit" class="btn btn-secondary btn-sm" title="Generate a new 6-character check-in code">
+            {{ icons.icon("refresh-cw", size=16) }}
+            <span>Regenerate Code</span>
+          </button>
+        </form>
+        <form method="post" action="/teacher/sessions/{{ session.id }}/close"
+              hx-confirm="Close this session? Any student who has not checked in will be marked ABSENT.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+          <button type="submit" class="btn btn-danger btn-sm">
+            {{ icons.icon("x-circle", size=16) }}
+            <span>Close Session</span>
+          </button>
+        </form>
+      {% elif session.status == 'closed' %}
+        {{ ui.badge("Session Closed & Finalized", variant="excused") }}
+      {% endif %}
+    </div>
+  </header>
+
+  {% if session.status == 'open' %}
+    <section class="card" aria-labelledby="checkin-code-title">
+      <div class="card-header">
+        <div>
+          <div class="cluster">
+            <span class="pulse-dot" aria-hidden="true"></span>
+            <h2 class="card-title" id="checkin-code-title">Active Check-in Code</h2>
+          </div>
+          <p class="card-subtitle">Ask students to open their portal and enter this code before the timer runs out.</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="grid-main-side items-center">
+          <div class="stack-sm text-center">
+            <span class="code-display code-digits" aria-label="Check-in code">{{ session.checkin_code }}</span>
+            {% if session.code_expires_at %}
+              <div class="cluster justify-center text-muted">
+                {{ icons.icon("clock", size=16) }}
+                <span>Expires in</span>
+                <span class="countdown-timer font-mono font-semibold text-lg"
+                      data-countdown-target="{{ session.code_expires_at.isoformat() }}"
+                      data-expires-at="{{ session.code_expires_at.isoformat() }}"
+                      aria-live="polite">--:--</span>
+              </div>
+            {% endif %}
+          </div>
+          <div class="stack-sm">
+            <span class="section-title">Checked in</span>
+            <span class="text-2xl font-bold">{{ checked_in }} <span class="text-muted text-lg font-medium">/ {{ stats.total }}</span></span>
+            <div class="progress" role="progressbar" aria-label="Students checked in" aria-valuenow="{{ checkin_pct }}" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar progress-bar-primary animate-fill" data-value="{{ checkin_pct }}"></div>
+            </div>
+            <span class="text-xs text-muted">Check-ins after +{{ session.late_after_minutes }} min are marked Late.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  {% elif session.status == 'scheduled' %}
+    {{ ui.alert("Click “Open Session & Generate Code” when you are ready for students to begin checking in.", variant="info", title="Session not started", dismissible=false) }}
+  {% elif session.status == 'closed' %}
+    {{ ui.alert("Unrecorded students were marked absent when the session closed. You can still override individual records below.", variant="success", title="Session completed & closed", dismissible=false) }}
+  {% endif %}
+
+  <div class="stat-grid stat-grid-5 stagger" id="session-stats-container">
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Total Enrolled</span>
+        <span class="stat-icon">{{ icons.icon("users", size=18) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ stats.total }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Present</span>
+        <span class="stat-icon text-present">{{ icons.icon("check", size=18) }}</span>
+      </div>
+      <div class="stat-value count-up text-present">{{ stats.present }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Late</span>
+        <span class="stat-icon text-late">{{ icons.icon("clock", size=18) }}</span>
+      </div>
+      <div class="stat-value count-up text-late">{{ stats.late }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Absent</span>
+        <span class="stat-icon text-absent">{{ icons.icon("x", size=18) }}</span>
+      </div>
+      <div class="stat-value count-up text-absent">{{ stats.absent }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Excused</span>
+        <span class="stat-icon text-info">{{ icons.icon("info", size=18) }}</span>
+      </div>
+      <div class="stat-value count-up text-info">{{ stats.excused }}</div>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Student Attendance Roster</h2>
+        <p class="card-subtitle">
+          {% if session.status == 'open' %}
+            <span class="cluster"><span class="pulse-dot" aria-hidden="true"></span> Live — updates every 5 seconds</span>
+          {% else %}
+            Attendance records and manual overrides
+          {% endif %}
+        </p>
+      </div>
+      {% if session.status == 'open' %}
+        <div class="card-actions">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            hx-get="/teacher/sessions/{{ session.id }}/roster"
+            hx-target="#live-roster-container"
+            hx-swap="innerHTML"
+            title="Refresh roster now"
+          >
+            {{ icons.icon("refresh-cw", size=14) }}
+            <span>Refresh</span>
+          </button>
+        </div>
+      {% endif %}
+    </div>
+    <div
+      id="live-roster-container"
+      {% if session.status == 'open' %}
+        hx-trigger="every 5s"
+        hx-get="/teacher/sessions/{{ session.id }}/roster"
+        hx-target="#live-roster-container"
+        hx-swap="innerHTML"
+      {% endif %}
+    >
+      {% include "teacher/partials/session_roster.html" %}
+    </div>
+  </section>
+</div>
+{% endblock %}

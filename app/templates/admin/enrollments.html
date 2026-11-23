@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}Course Enrollments — {{ course.code }} — Admin Portal{% endblock %}
+
+{% block content %}
+<div class="page">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="/admin/courses">Courses</a>
+    <span class="breadcrumb-sep">/</span>
+    <span class="font-mono">{{ course.code }}</span>
+    <span class="breadcrumb-sep">/</span>
+    <span>Enrollments</span>
+  </nav>
+
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">
+        <span class="font-mono text-primary">{{ course.code }}</span>
+        <span>&mdash;</span>
+        <span>{{ course.title }}</span>
+      </h1>
+      <p class="page-subtitle">
+        Enrolled Students: <strong>{{ total_students }}</strong> &middot; Minimum Attendance: <strong>{{ course.min_attendance_pct }}%</strong>
+      </p>
+    </div>
+    <div class="page-actions">
+      <a href="/admin/sessions?course_id={{ course.id }}" class="btn btn-secondary btn-sm">
+        {{ icons.icon("calendar", size=16) }}
+        <span>Sessions</span>
+      </a>
+      <button type="button" class="btn btn-primary btn-sm" data-modal-open="enroll-modal">
+        {{ icons.icon("plus", size=16) }}
+        <span>Enroll Students</span>
+      </button>
+    </div>
+  </header>
+
+  {% if error %}
+    {{ ui.alert(error, variant="danger", dismissible=false) }}
+  {% endif %}
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Enrolled Students</h2>
+        <p class="card-subtitle">Students registered for this course roster</p>
+      </div>
+      <div class="card-actions">
+        <span class="badge badge-neutral">{{ total_students }} enrolled</span>
+      </div>
+    </div>
+
+    {% if students %}
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Student</th>
+              <th scope="col">Student ID</th>
+              <th scope="col">Account Status</th>
+              <th scope="col" class="text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in students %}
+              <tr>
+                <td data-label="Student" class="cell-primary">
+                  <div class="flex items-center gap-3">
+                    <span class="avatar" aria-hidden="true">{{ (s.full_name or s.email)[0]|upper }}</span>
+                    <div>
+                      <div class="font-semibold">{{ s.full_name or '—' }}</div>
+                      <div class="text-xs text-muted">{{ s.email }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td data-label="Student ID" class="cell-muted">
+                  <span class="font-mono text-xs font-semibold">{{ s.student_id or '—' }}</span>
+                </td>
+                <td data-label="Account Status">
+                  {% if s.is_active %}
+                    <span class="badge badge-present">Active</span>
+                  {% else %}
+                    <span class="badge badge-neutral">Inactive</span>
+                  {% endif %}
+                </td>
+                <td data-label="Action" class="cell-actions">
+                  <form
+                    method="post"
+                    action="/admin/courses/{{ course.id }}/enrollments/{{ s.id }}/delete"
+                    hx-confirm="Unenroll {{ s.full_name or s.email }} from {{ course.code }}?"
+                  >
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+                    <button type="submit" class="btn btn-outline btn-sm text-danger" title="Unenroll student">
+                      {{ icons.icon("x", size=14) }}
+                      <span>Unenroll</span>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if total_pages > 1 %}
+        <div class="card-footer">
+          {{ ui.pagination(current_page=current_page, total_pages=total_pages, total_items=total_students, base_url="/admin/courses/" ~ course.id ~ "/enrollments") }}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="card-body">
+        {{ ui.empty_state("No students enrolled yet", description="Enroll students by selecting them from the directory or pasting their IDs.", icon="users") }}
+      </div>
+    {% endif %}
+  </section>
+</div>
+
+{# Enroll Students Modal #}
+<div id="enroll-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-enroll-title">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h2 id="modal-enroll-title" class="text-lg font-semibold">Enroll Students in {{ course.code }}</h2>
+      <button type="button" class="btn btn-ghost btn-icon" data-modal-close aria-label="Close modal">
+        {{ icons.icon("x", size=18) }}
+      </button>
+    </div>
+    <form method="post" action="/admin/courses/{{ course.id }}/enrollments">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+      <div class="modal-body stack">
+        {% if available_students %}
+          <div class="form-group">
+            <label for="quick_student" class="form-label">Select from Available Students</label>
+            <select id="quick_student" name="student_id" class="form-select">
+              <option value="" selected>Choose a student...</option>
+              {% for astu in available_students %}
+                <option value="{{ astu.id }}">{{ astu.full_name or astu.email }} ({{ astu.student_id or astu.email }})</option>
+              {% endfor %}
+            </select>
+          </div>
+        {% endif %}
+
+        <div class="form-group">
+          <label for="bulk_tokens" class="form-label">Or Enter Multiple Students (Comma or newline separated)</label>
+          <textarea
+            id="bulk_tokens"
+            name="student_ids"
+            rows="3"
+            class="form-textarea"
+            placeholder="student@example.com, STU-101, 8a9e2f... (emails, student IDs, or UUIDs)"
+            aria-describedby="bulk_tokens-help"
+          ></textarea>
+          <span class="form-hint" id="bulk_tokens-help">Paste student emails, student code numbers, or UUIDs.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Enroll Students</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

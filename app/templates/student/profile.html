@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}Student Profile — Attendance Monitoring System{% endblock %}
+
+{% block content %}
+<div class="page page-narrow stagger">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Student Profile</h1>
+      <p class="page-subtitle">View your academic profile, Student ID credentials, and manage your account security.</p>
+    </div>
+  </header>
+
+  {% if error %}
+    {{ ui.alert(error, variant="danger", title="Update Failed", dismissible=false, class_name="animate-in") }}
+  {% endif %}
+  {% if success %}
+    {{ ui.alert(success, variant="success", title="Success", dismissible=false, class_name="animate-in") }}
+  {% endif %}
+
+  <section class="card">
+    <div class="card-header">
+      <div class="cluster">
+        <span class="avatar avatar-lg" aria-hidden="true">{{ (user.full_name or user.email)[0]|upper }}</span>
+        <div>
+          <h2 class="card-title">{{ user.full_name or user.email }}</h2>
+          <p class="card-subtitle">{{ user.email }}</p>
+        </div>
+      </div>
+      <div class="card-actions">
+        <span class="badge badge-primary">Student</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <dl class="kv">
+        <div class="kv-row">
+          <dt class="kv-key">Student ID Number</dt>
+          <dd class="kv-value flex items-center gap-2">
+            <span class="student-badge">
+              {{ icons.icon("award", size=16) }}
+              <span>{{ user.student_id or 'Not Assigned' }}</span>
+            </span>
+            {% if user.student_id %}
+              <button
+                type="button"
+                class="copy-id-btn"
+                data-copy-text="{{ user.student_id }}"
+                title="Copy Student ID"
+                aria-label="Copy Student ID"
+              >
+                {{ icons.icon("copy", size=13) }}
+                <span>Copy</span>
+              </button>
+            {% endif %}
+          </dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Account Email</dt>
+          <dd class="kv-value">{{ user.email }}</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Role</dt>
+          <dd class="kv-value capitalize">{{ user.role }}</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Enrolled Courses</dt>
+          <dd class="kv-value">{{ courses_count }} courses</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Account Status</dt>
+          <dd class="kv-value">
+            {% if user.is_active %}
+              <span class="badge badge-present">Active</span>
+            {% else %}
+              <span class="badge badge-neutral">Inactive</span>
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Change Password</h2>
+        <p class="card-subtitle">Must contain at least 8 characters, including letters and numbers.</p>
+      </div>
+    </div>
+    <form method="post" action="/student/profile/password">
+      <div class="card-body stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+
+        <div class="form-group">
+          <label for="old_password" class="form-label required">Current Password</label>
+          <input type="password" id="old_password" name="old_password" class="form-input" required autocomplete="current-password" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="new_password" class="form-label required">New Password</label>
+            <input type="password" id="new_password" name="new_password" class="form-input" required minlength="8" autocomplete="new-password" aria-describedby="new-password-hint" />
+            <span id="new-password-hint" class="form-hint">At least 8 characters, with at least one letter and one number</span>
+          </div>
+          <div class="form-group">
+            <label for="confirm_password" class="form-label required">Confirm New Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" class="form-input" required minlength="8" autocomplete="new-password" />
+          </div>
+        </div>
+      </div>
+      <div class="card-footer form-actions">
+        <button type="submit" class="btn btn-primary">
+          {{ icons.icon("key", size=16) }}
+          <span>Update Password</span>
+        </button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

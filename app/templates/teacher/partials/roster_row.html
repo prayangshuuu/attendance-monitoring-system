@@ -1,0 +1,55 @@
+{% import "components/icons.html" as icons %}
+{% import "teacher/partials/_macros.html" as tm %}
+{# A single live-roster row. Expects `item`; session id comes from `session_id` or `session.id`. #}
+{% set sid = session_id if session_id is defined and session_id else session.id %}
+{% set cur = ((item.status.value if item.status.value is defined else item.status)|string|lower) if item.status else '' %}
+<tr id="roster-row-{{ item.student_id }}">
+  <td class="cell-primary" data-label="Student">
+    <div class="flex items-center gap-3">
+      <span class="avatar" aria-hidden="true">{{ tm.initials(item.student_name) }}</span>
+      <div>
+        <div class="font-medium">{{ item.student_name }}</div>
+        <div class="text-xs text-muted">{{ item.student_email }}</div>
+      </div>
+    </div>
+  </td>
+  <td class="cell-muted" data-label="Student ID"><span class="font-mono">{{ item.student_code or '-' }}</span></td>
+  <td data-label="Status">
+    {{ tm.attendance_status_badge(item.status) }}
+    {% if item.note %}
+      <div class="text-xs text-muted mt-1" title="Teacher note: {{ item.note }}">&ldquo;{{ item.note }}&rdquo;</div>
+    {% endif %}
+  </td>
+  <td data-label="Check-in (UTC)">
+    {% if item.checked_in_at %}
+      <span class="font-mono text-sm">{{ item.checked_in_at.strftime('%H:%M:%S') }}</span>
+    {% else %}
+      <span class="text-muted">—</span>
+    {% endif %}
+  </td>
+  <td data-label="Method">
+    {% if item.method %}
+      <span class="badge badge-neutral uppercase">{{ (item.method.value if item.method.value is defined else item.method)|string|lower }}</span>
+    {% else %}
+      <span class="text-muted">—</span>
+    {% endif %}
+  </td>
+  <td class="cell-actions" data-label="Manual Override">
+    <div class="cluster justify-end" role="group" aria-label="Override status for {{ item.student_name }}">
+      {% for code, label in [('present', 'P'), ('late', 'L'), ('absent', 'A'), ('excused', 'E')] %}
+        <button
+          type="button"
+          class="btn btn-sm {% if cur == code %}btn-primary{% else %}btn-outline{% endif %}"
+          aria-pressed="{{ 'true' if cur == code else 'false' }}"
+          hx-post="/teacher/sessions/{{ sid }}/attendance"
+          hx-vals='{"student_id": "{{ item.student_id }}", "status": "{{ code }}", "csrf_token": "{{ csrf_token }}"}'
+          hx-target="#live-roster-container"
+          hx-swap="innerHTML"
+          hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'
+          title="Mark {{ code|capitalize }}"
+          aria-label="Mark {{ item.student_name }} {{ code|capitalize }}"
+        >{{ label }}</button>
+      {% endfor %}
+    </div>
+  </td>
+</tr>

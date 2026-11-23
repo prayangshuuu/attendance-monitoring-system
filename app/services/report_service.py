@@ -1,13 +1,17 @@
 import csv
 import io
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from uuid import UUID
 
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, PermissionDeniedError, ValidationAppError
-from app.models.enums import UserRole
+from app.models.attendance_record import AttendanceRecord
+from app.models.class_session import ClassSession
+from app.models.course import Course
+from app.models.enums import AttendanceStatus, SessionStatus, UserRole
 from app.models.user import User
 from app.repositories.course_repository import CourseRepository, course_repository
 from app.repositories.enrollment_repository import EnrollmentRepository, enrollment_repository
@@ -22,7 +26,7 @@ from app.schemas.report import (
     StudentFullReport,
 )
 from app.services.permissions import ensure_can_manage_course
-from app.utils.clock import Clock
+from app.utils.clock import Clock, SystemClock
 
 
 def sanitize_csv_cell(value: object) -> str:
@@ -251,6 +255,74 @@ class ReportService:
             )
 
         return await self.report_repo.get_dashboard_summary(session, clock)
+
+    async def get_dashboard_metrics(
+        self,
+        session: AsyncSession,
+        clock: Clock | None = None,
+    ) -> dict[str, Any]:
+        """Compute institutional dashboard metrics for administrators."""
+        effective_clock = clock or SystemClock()
+        summary = await self.report_repo.get_dashboard_summary(session, effective_clock)
+
+        total_courses_res = await session.execute(select(func.count(Course.id)))
+        total_courses = total_courses_res.scalar_one()
+
+        active_sessions_res = await session.execute(
+            select(func.count(ClassSession.id)).where(
+                ClassSession.status == SessionStatus.OPEN.value
+            )
+        )
+        active_sessions = active_sessions_res.scalar_one()
+
+        total_sessions_res = await session.execute(select(func.count(ClassSession.id)))
+        total_sessions = total_sessions_res.scalar_one()
+
+        overall_rate_stmt = select(
+            func.count(
+                case(
+                    (
+                        AttendanceRecord.status.in_(
+                            [
+                                AttendanceStatus.PRESENT.value,
+                                AttendanceStatus.LATE.value,
+                                AttendanceStatus.EXCUSED.value,
+                            ]
+                        ),
+                        1,
+                    )
+                )
+            ).label("attended"),
+            func.count(AttendanceRecord.id).label("total"),
+        )
+        overall_rate_res = await session.execute(overall_rate_stmt)
+        overall_row = overall_rate_res.one()
+        overall_attended = overall_row.attended or 0
+        overall_total = overall_row.total or 0
+        overall_attendance_rate: float | None = None
+        if overall_total > 0:
+            overall_attendance_rate = round((overall_attended / overall_total) * 100, 2)
+
+        # Count at-risk students across all active courses
+        courses_stmt = select(Course).where(Course.is_active.is_(True))
+        active_courses = list((await session.execute(courses_stmt)).scalars().all())
+        at_risk_count = 0
+        for c in active_courses:
+            course_report = await self.report_repo.get_course_report(session, c)
+            at_risk_count += sum(1 for s in course_report.students if s.is_at_risk)
+
+        return {
+            "total_users": summary.total_users,
+            "users_by_role": summary.users_by_role,
+            "total_courses": total_courses,
+            "active_courses": summary.active_courses,
+            "active_sessions": active_sessions,
+            "sessions_today": summary.sessions_today,
+            "total_sessions": total_sessions,
+            "attendance_rate_today": summary.attendance_rate_today,
+            "overall_attendance_rate": overall_attendance_rate,
+            "at_risk_count": at_risk_count,
+        }
 
 
 report_service = ReportService()

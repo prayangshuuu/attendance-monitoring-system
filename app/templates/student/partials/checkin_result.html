@@ -1,0 +1,32 @@
+{% import "components/icons.html" as icons %}
+
+{% if error %}
+  <div class="alert alert-danger animate-in" role="alert">
+    <div class="alert-icon">{{ icons.icon("alert-circle", size=20) }}</div>
+    <div class="alert-content">
+      <div class="alert-title">Check-in Failed</div>
+      <div>{{ error }}</div>
+    </div>
+  </div>
+{% elif success %}
+  <div class="alert {% if is_late %}alert-warning{% else %}alert-success{% endif %} animate-in" role="status">
+    <div class="alert-icon">
+      {% if is_late %}{{ icons.icon("clock", size=20) }}{% else %}{{ icons.icon("check-circle", size=20) }}{% endif %}
+    </div>
+    <div class="alert-content">
+      <div class="alert-title">
+        {% if is_late %}Attendance Recorded: Marked Late{% else %}Check-in Successful: Marked Present{% endif %}
+      </div>
+      <div>{{ success }}</div>
+      {% if record %}
+        <div class="cluster mt-2 text-xs">
+          <span class="badge badge-{% if is_late %}late{% else %}present{% endif %}">Status: {{ record.status|capitalize }}</span>
+          {% if record.checked_in_at %}
+            <span>Recorded: <strong>{{ record.checked_in_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</strong></span>
+          {% endif %}
+          <span class="badge badge-neutral">Method: Code</span>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}

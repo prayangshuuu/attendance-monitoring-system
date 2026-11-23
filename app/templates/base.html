@@ -1,0 +1,188 @@
+{% import "components/icons.html" as icons %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token or '' }}">
+  <title>{% block title %}Attendance Monitoring System{% endblock %}</title>
+  
+  {# Static Stylesheet #}
+  <link rel="stylesheet" href="/static/css/app.css">
+  
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false}'>
+
+  {# Vendored HTMX 2.x & Application JS #}
+  <script src="/static/js/htmx.min.js"></script>
+  <script src="/static/js/app.js" defer></script>
+  
+  {% block extra_head %}{% endblock %}
+</head>
+<body hx-boost="true">
+
+{% if user %}
+  {% set user_role = (user.role.value if user.role.value is defined else user.role)|string|lower %}
+  
+  <div class="app-container">
+    {# Mobile Backdrop #}
+    <div id="drawer-backdrop" class="drawer-backdrop" aria-hidden="true"></div>
+
+    {# Sidebar / Mobile Drawer Navigation (identical for every role) #}
+    {% set home_url = '/admin' if user_role == 'admin' else ('/teacher' if user_role == 'teacher' else '/student') %}
+    {% set display_name = user.full_name or user.email %}
+    <aside id="sidebar-drawer" class="sidebar" aria-label="Main Navigation">
+      <div class="sidebar-header">
+        <a href="{{ home_url }}" class="brand-link">
+          <span class="brand-icon-wrapper">{{ icons.icon("calendar", size=18) }}</span>
+          <span class="brand-name">AttendSys</span>
+        </a>
+        <button type="button" class="btn btn-ghost btn-icon-sm" data-drawer-close aria-label="Close navigation drawer">
+          {{ icons.icon("x", size=18) }}
+        </button>
+      </div>
+
+      <nav class="sidebar-content" aria-label="Portal Navigation">
+        {% macro nav_item(href, label, icon_name, active) %}
+          <a href="{{ href }}" class="nav-link {% if active %}is-active{% endif %}"{% if active %} aria-current="page"{% endif %}>
+            <span class="nav-link-icon">{{ icons.icon(icon_name, size=18) }}</span>
+            <span>{{ label }}</span>
+          </a>
+        {% endmacro %}
+        {% set path = request.url.path if request else '' %}
+
+        {% if user_role == "admin" %}
+          <div class="nav-group">
+            <div class="sidebar-section-title">Overview</div>
+            {{ nav_item("/admin", "Dashboard", "home", active_page == 'dashboard' or path == '/admin') }}
+          </div>
+          <div class="nav-group">
+            <div class="sidebar-section-title">Management</div>
+            {{ nav_item("/admin/users", "Users", "users", active_page == 'users' or path.startswith('/admin/users')) }}
+            {{ nav_item("/admin/courses", "Courses", "book", active_page == 'courses' or path.startswith('/admin/courses')) }}
+            {{ nav_item("/admin/enrollments", "Enrollments", "users", active_page == 'enrollments' or path.startswith('/admin/enrollments')) }}
+            {{ nav_item("/admin/sessions", "Sessions", "calendar", active_page == 'sessions' or path.startswith('/admin/sessions')) }}
+          </div>
+          <div class="nav-group">
+            <div class="sidebar-section-title">Insights</div>
+            {{ nav_item("/admin/reports", "Reports", "download", active_page == 'reports' or path.startswith('/admin/reports')) }}
+          </div>
+          <div class="nav-group">
+            <div class="sidebar-section-title">Account</div>
+            {{ nav_item("/admin/profile", "Profile", "user", active_page == 'profile' or path.startswith('/admin/profile')) }}
+          </div>
+
+        {% elif user_role == "teacher" %}
+          <div class="nav-group">
+            <div class="sidebar-section-title">Overview</div>
+            {{ nav_item("/teacher", "Dashboard", "home", active_page == 'dashboard' or path == '/teacher') }}
+          </div>
+          <div class="nav-group">
+            <div class="sidebar-section-title">Teaching</div>
+            {{ nav_item("/teacher/courses", "My Courses", "book", active_page == 'courses' or path.startswith('/teacher/courses')) }}
+            {{ nav_item("/teacher/sessions", "Sessions", "calendar", active_page == 'sessions' or path.startswith('/teacher/sessions')) }}
+            {{ nav_item("/teacher/live", "Live Session", "clock", active_page == 'live' or path.startswith('/teacher/live')) }}
+          </div>
+          <div class="nav-group">
+            <div class="sidebar-section-title">Insights</div>
+            {{ nav_item("/teacher/reports", "Reports", "download", active_page == 'reports' or path.startswith('/teacher/reports')) }}
+          </div>
+          <div class="nav-group">
+            <div class="sidebar-section-title">Account</div>
+            {{ nav_item("/teacher/profile", "Profile", "user", active_page == 'profile' or path.startswith('/teacher/profile')) }}
+          </div>
+
+        {% else %}
+          {# Student Portal #}
+          <div class="nav-group">
+            <div class="sidebar-section-title">Overview</div>
+            {{ nav_item("/student", "Dashboard", "home", active_page == 'dashboard' or path == '/student') }}
+            {{ nav_item("/student/check-in", "Check-in", "key", active_page == 'checkin' or path.startswith('/student/check-in') or path.startswith('/student/checkin')) }}
+          </div>
+          <div class="nav-group">
+            <div class="sidebar-section-title">Academics</div>
+            {{ nav_item("/student/attendance", "My Attendance", "clock", active_page == 'attendance' or path.startswith('/student/attendance')) }}
+            {{ nav_item("/student/courses", "Courses", "book", active_page == 'courses' or path.startswith('/student/courses')) }}
+          </div>
+          <div class="nav-group">
+            <div class="sidebar-section-title">Account</div>
+            {{ nav_item("/student/profile", "Profile", "user", active_page == 'profile' or path.startswith('/student/profile')) }}
+          </div>
+        {% endif %}
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile-badge">
+          <div class="user-avatar" aria-hidden="true">
+            {{ (user.full_name or user.email or "U")[0]|upper }}
+          </div>
+          <div class="user-details">
+            <div class="user-name" title="{{ display_name }}">{{ display_name }}</div>
+            <div class="user-role-label">{{ user_role }}</div>
+          </div>
+        </div>
+
+        <form method="post" action="/logout" class="w-full">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+          <button type="submit" class="btn btn-secondary btn-sm w-full" aria-label="Log out of application">
+            {{ icons.icon("log-out", size=16) }}
+            <span>Log Out</span>
+          </button>
+        </form>
+      </div>
+    </aside>
+
+    {# Main Content Wrapper #}
+    <div class="main-wrapper">
+      {# Top bar (all widths). Menu button + brand only show below 1024px. #}
+      <header class="topbar" aria-label="Top bar">
+        <div class="topbar-left">
+          <button
+            type="button"
+            id="mobile-menu-btn"
+            class="btn btn-ghost btn-icon"
+            data-drawer-toggle
+            aria-label="Toggle navigation menu"
+            aria-controls="sidebar-drawer"
+            aria-expanded="false"
+          >
+            {{ icons.icon("menu", size=20) }}
+          </button>
+          <a href="{{ home_url }}" class="brand-link topbar-brand" aria-label="AttendSys home">
+            <span class="brand-icon-wrapper">{{ icons.icon("calendar", size=16) }}</span>
+          </a>
+          <div class="topbar-title-area">
+            <span class="topbar-eyebrow">{{ user_role }} portal</span>
+            <span class="topbar-title">{% block topbar_title %}{{ (active_page or 'dashboard')|replace('_', ' ')|replace('checkin', 'check-in')|title }}{% endblock %}</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <span class="brand-badge">{{ user_role }}</span>
+          <div class="topbar-user">
+            <span class="topbar-user-name" title="{{ display_name }}">{{ display_name }}</span>
+            <span class="avatar" aria-hidden="true">{{ (user.full_name or user.email or "U")[0]|upper }}</span>
+          </div>
+        </div>
+      </header>
+
+      {# Primary Content View #}
+      <main id="main-content" class="main-content">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+{% else %}
+  {# Standalone Layout (Unauthenticated / Error fallback) #}
+  <div class="standalone-wrapper">
+    <main id="main-content" class="w-full flex justify-center">
+      {{ self.content() }}
+    </main>
+  </div>
+{% endif %}
+
+{# Global Toast Notification Container #}
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

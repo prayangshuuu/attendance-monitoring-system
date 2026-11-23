@@ -1,0 +1,102 @@
+{% import "components/icons.html" as icons %}
+<div id="login-card" class="auth-card">
+  <div class="auth-header">
+    <span class="brand-icon-wrapper brand-icon-lg" aria-hidden="true">
+      {{ icons.icon("calendar", size=24) }}
+    </span>
+    <h1 class="auth-title">Sign in to AttendSys</h1>
+    <p class="auth-subtitle">Academic course attendance &amp; compliance portal</p>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger mb-4" role="alert">
+    <div class="alert-icon">{{ icons.icon("alert-circle", size=18) }}</div>
+    <div class="alert-content">
+      <div class="font-semibold text-sm">{{ error }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <form
+    id="login-form"
+    class="auth-form"
+    method="post"
+    action="/login"
+    hx-post="/login"
+    hx-target="#login-card"
+    hx-swap="outerHTML"
+    hx-disabled-elt="find button[type='submit']"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+
+    <div class="form-group">
+      <label for="email" class="form-label">Email address</label>
+      <input
+        type="email"
+        id="email"
+        name="email"
+        class="form-input"
+        placeholder="name@example.com"
+        value="{{ email or '' }}"
+        required
+        autofocus
+        autocomplete="email"
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="password" class="form-label">Password</label>
+      <input
+        type="password"
+        id="password"
+        name="password"
+        class="form-input"
+        placeholder="Enter your password"
+        required
+        autocomplete="current-password"
+      >
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg w-full auth-submit">
+      <span class="htmx-indicator spinner" aria-hidden="true"></span>
+      <span>Sign in</span>
+    </button>
+  </form>
+
+  {# One-Click Demo Credentials Quick Fill #}
+  <div class="demo-credentials-box">
+    <div class="demo-credentials-header">
+      <span class="section-title">Demo accounts</span>
+      <span class="text-xs text-subtle">Click to auto-fill</span>
+    </div>
+    <div class="demo-chip-row">
+      <button
+        type="button"
+        class="demo-chip"
+        data-demo-email="admin@example.com"
+        data-demo-password="ChangeMe123!"
+      >
+        <span class="status-dot text-primary" aria-hidden="true"></span>
+        <span>Admin</span>
+      </button>
+      <button
+        type="button"
+        class="demo-chip"
+        data-demo-email="teacher1@example.com"
+        data-demo-password="Teacher123!"
+      >
+        <span class="status-dot text-present" aria-hidden="true"></span>
+        <span>Teacher</span>
+      </button>
+      <button
+        type="button"
+        class="demo-chip"
+        data-demo-email="student1@example.com"
+        data-demo-password="Student123!"
+      >
+        <span class="status-dot text-info" aria-hidden="true"></span>
+        <span>Student</span>
+      </button>
+    </div>
+  </div>
+</div>

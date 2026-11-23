@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}Class Check-in — Attendance Monitoring System{% endblock %}
+
+{% block content %}
+<div class="page page-narrow stagger">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Class Check-in</h1>
+      <p class="page-subtitle">Enter the 6-character attendance code displayed by your instructor in class.</p>
+    </div>
+    <div class="page-actions">
+      <a href="/student/attendance" class="btn btn-secondary btn-sm">
+        {{ icons.icon("clock", size=16) }}
+        <span>My Attendance</span>
+      </a>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Enter Check-in Code</h2>
+        <p class="card-subtitle">Check your instructor's screen for the code. Codes are case-insensitive.</p>
+      </div>
+      <div class="card-actions">
+        <span class="badge {% if active_sessions %}badge-present{% else %}badge-neutral{% endif %}">
+          {% if active_sessions %}<span class="status-dot pulse-dot" aria-hidden="true"></span>{% endif %}
+          {{ active_sessions|length }} Active
+        </span>
+      </div>
+    </div>
+
+    <div class="card-body stack">
+      <form
+        method="post"
+        action="/student/check-in"
+        hx-post="/student/check-in"
+        hx-target="#checkin-result"
+        hx-swap="innerHTML"
+        hx-indicator="#checkin-indicator"
+        hx-disabled-elt="find button[type='submit']"
+        class="stack"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+
+        {% if active_sessions and active_sessions|length > 1 %}
+          <div class="form-group">
+            <label for="session_id" class="form-label required">Select Class Session</label>
+            <select id="session_id" name="session_id" class="form-select" required>
+              {% for s in active_sessions %}
+                {% set rec = checked_in_records.get(s.id) %}
+                <option value="{{ s.id }}">
+                  {{ s.course.code }} &mdash; {{ s.course.title }} ({{ s.starts_at.strftime('%H:%M UTC') }}){% if rec %} [Already Checked In: {{ rec.status|capitalize }}]{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        {% elif active_sessions and active_sessions|length == 1 %}
+          <input type="hidden" name="session_id" value="{{ active_sessions[0].id }}">
+        {% endif %}
+
+        <div class="form-group">
+          <label for="code" class="form-label required text-center">Enter 6-Character Passcode</label>
+          <div class="checkin-code-wrapper">
+            <input
+              type="text"
+              id="code"
+              name="code"
+              value="{{ code or '' }}"
+              maxlength="6"
+              minlength="6"
+              required
+              autofocus
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              placeholder="ABC123"
+              class="form-input code-input-lg"
+              aria-label="6-character check-in code"
+              aria-describedby="code-helper"
+              data-code-input
+              data-code-slots="code-slots"
+              data-code-counter="char-counter"
+            />
+          </div>
+          <div class="code-slots-helper justify-center mt-2" id="code-slots" aria-hidden="true">
+            <span class="slot"></span>
+            <span class="slot"></span>
+            <span class="slot"></span>
+            <span class="slot"></span>
+            <span class="slot"></span>
+            <span class="slot"></span>
+          </div>
+          <p id="code-helper" class="form-hint text-center mt-2">
+            <span id="char-counter" class="font-mono">0 / 6</span> characters &bull; Case-insensitive
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          class="btn btn-primary btn-lg w-full"
+          id="checkin-submit-btn"
+          {% if not active_sessions %}title="No active sessions open right now, but you may test codes if provided"{% endif %}
+        >
+          <span class="htmx-indicator spinner" id="checkin-indicator" aria-hidden="true"></span>
+          <span>Submit Check-in</span>
+        </button>
+      </form>
+
+      <div id="checkin-result" aria-live="polite">
+        {% include "student/partials/checkin_result.html" %}
+      </div>
+    </div>
+
+    <div class="card-footer">
+      <ul class="stack-sm text-xs text-muted">
+        <li>Check-in codes are valid for a limited time (typically 15 minutes) from session opening.</li>
+        <li>Checking in after the late cutoff window records your attendance status as <strong>Late</strong>.</li>
+        <li>Each student may only check in once per class session.</li>
+        <li>Students without recorded attendance will automatically be marked <strong>Absent</strong> upon session closing.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Open Class Sessions</h2>
+        <p class="card-subtitle">Sessions currently active and accepting student check-in.</p>
+      </div>
+    </div>
+    {% if active_sessions %}
+      <div class="list stagger">
+        {% for s in active_sessions %}
+          {% set rec = checked_in_records.get(s.id) %}
+          <div class="list-item">
+            <div class="list-item-main">
+              <div class="list-item-title">{{ s.course.code }} &mdash; {{ s.course.title }}</div>
+              <div class="list-item-meta">
+                Session: {{ s.starts_at.strftime('%H:%M UTC') }} - {{ s.ends_at.strftime('%H:%M UTC') }}
+                {% if s.code_expires_at %}
+                  <div class="countdown-badge mt-1">
+                    <span class="pulse-indicator"></span>
+                    {{ icons.icon("clock", size=12) }}
+                    <span>Expires:</span>
+                    <span class="countdown-timer font-bold" data-expires-at="{{ s.code_expires_at.isoformat() }}">--:--</span>
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+            <div class="list-item-side">
+              {% if rec %}
+                <span class="badge badge-{{ rec.status }}">
+                  {{ icons.icon("check", size=12) }}
+                  Checked In ({{ rec.status|capitalize }})
+                </span>
+              {% else %}
+                <span class="badge badge-warning"><span class="status-dot pulse-dot" aria-hidden="true"></span> Awaiting Code</span>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card-body">
+        {{ ui.empty_state("No class sessions are currently open", "When your instructor opens attendance for a session, it will automatically appear here.", icon="clock") }}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

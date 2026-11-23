@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+
+{% block title %}404 - Page Not Found | AttendSys{% endblock %}
+
+{% block content %}
+<div class="error-card animate-in">
+  <div class="error-icon " aria-hidden="true">{{ icons.icon("search", size=26) }}</div>
+  <div class="error-code">404</div>
+  <h1 class="error-title">Page Not Found</h1>
+  <p class="error-message">
+    {{ message or "The page or record you are looking for does not exist or may have been moved." }}
+  </p>
+  <div class="error-actions">
+    {% if user %}
+      {% set user_role = (user.role.value if user.role.value is defined else user.role)|string|lower %}
+      <a href="{% if user_role == 'admin' %}/admin{% elif user_role == 'teacher' %}/teacher{% else %}/student{% endif %}" class="btn btn-primary">
+        {{ icons.icon("home", size=16) }}
+        <span>Return to Dashboard</span>
+      </a>
+    {% else %}
+      <a href="/login" class="btn btn-primary">Sign In</a>
+    {% endif %}
+    <button type="button" class="btn btn-secondary" data-history-back>
+      {{ icons.icon("chevron-left", size=16) }}
+      <span>Go Back</span>
+    </button>
+  </div>
+</div>
+{% endblock %}

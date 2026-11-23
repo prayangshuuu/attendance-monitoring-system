@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+
+{% block title %}401 - Unauthorized | AttendSys{% endblock %}
+
+{% block content %}
+<div class="error-card animate-in">
+  <div class="error-icon " aria-hidden="true">{{ icons.icon("key", size=26) }}</div>
+  <div class="error-code">401</div>
+  <h1 class="error-title">Authentication Required</h1>
+  <p class="error-message">
+    {{ message or "You must be signed in with a valid session to view this page." }}
+  </p>
+  <div class="error-actions">
+    <a href="/login" class="btn btn-primary">Sign In</a>
+    <button type="button" class="btn btn-secondary" data-history-back>
+      {{ icons.icon("chevron-left", size=16) }}
+      <span>Go Back</span>
+    </button>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}My Enrolled Courses — Attendance Monitoring System{% endblock %}
+
+{% block content %}
+<div class="page stagger">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">My Enrolled Courses</h1>
+      <p class="page-subtitle">View all enrolled courses, course instructors, and attendance standing.</p>
+    </div>
+    <div class="page-actions">
+      <a href="/student/check-in" class="btn btn-primary btn-sm">
+        {{ icons.icon("key", size=16) }}
+        <span>Check-in</span>
+      </a>
+    </div>
+  </header>
+
+  {% if courses_data %}
+    <div class="grid-2 stagger">
+      {% for item in courses_data %}
+        {% set c = item.course %}
+        {% set t = item.teacher %}
+        {% set pct = item.percentage if item.percentage is not none else 0 %}
+        <section class="card card-hover">
+          <div class="card-header">
+            <div>
+              <p class="section-title text-primary font-mono">{{ c.code }}</p>
+              <h2 class="card-title">{{ c.title }}</h2>
+              <p class="card-subtitle">
+                Instructor: <strong>{{ t.full_name or t.email if t else 'Assigned Faculty' }}</strong>
+                {% if t and t.email and t.full_name %}({{ t.email }}){% endif %}
+              </p>
+            </div>
+            <div class="card-actions">
+              {% if item.percentage is not none %}
+                {% if item.is_at_risk %}
+                  <span class="badge badge-absent">{{ icons.icon("alert-circle", size=12) }} At Risk</span>
+                {% else %}
+                  <span class="badge badge-present">{{ icons.icon("check", size=12) }} Good Standing</span>
+                {% endif %}
+              {% else %}
+                <span class="badge badge-neutral">No Sessions Yet</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="card-body stack">
+            <div class="stack-sm">
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-muted">Current Attendance</span>
+                <span class="text-lg font-bold {% if item.is_at_risk %}text-danger{% elif item.percentage is not none %}text-present{% else %}text-muted{% endif %}">
+                  {{ item.percentage if item.percentage is not none else 'N/A' }}{% if item.percentage is not none %}%{% endif %}
+                </span>
+              </div>
+              {{ ui.progress_bar(value=pct, max=100, min_threshold=item.min_attendance_pct, height="10px") }}
+              <div class="flex justify-between text-xs text-muted">
+                <span class="flex items-center gap-1" title="Required minimum attendance threshold">
+                  <span class="status-dot text-late" aria-hidden="true"></span>
+                  Required Min: <strong>{{ item.min_attendance_pct }}%</strong>
+                </span>
+                <span>Attended: <strong>{{ item.attended }} / {{ item.total_closed }}</strong></span>
+              </div>
+            </div>
+
+            <div class="cluster">
+              <span class="badge badge-present">{{ item.present_count }} Present</span>
+              <span class="badge badge-late">{{ item.late_count }} Late</span>
+              <span class="badge badge-absent">{{ item.absent_count }} Absent</span>
+              <span class="badge badge-excused">{{ item.excused_count }} Excused</span>
+            </div>
+
+            {% if item.is_at_risk %}
+              <div class="alert alert-warning" role="alert">
+                <div class="alert-icon">{{ icons.icon("alert-triangle", size=18) }}</div>
+                <div class="alert-content">
+                  Your attendance is below the <strong>{{ item.min_attendance_pct }}%</strong> minimum threshold. Please attend upcoming sessions.
+                </div>
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="card-footer">
+            <a href="/student/attendance?course_id={{ c.id }}" class="btn btn-outline btn-sm w-full">
+              {{ icons.icon("clock", size=14) }}
+              <span>View Attendance Records</span>
+            </a>
+          </div>
+        </section>
+      {% endfor %}
+    </div>
+  {% else %}
+    <section class="card">
+      <div class="card-body">
+        {{ ui.empty_state("No Enrolled Courses", "You are not currently enrolled in any academic courses.", icon="book") }}
+      </div>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

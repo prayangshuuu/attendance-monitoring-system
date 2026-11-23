@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}Course Management — Admin Portal{% endblock %}
+
+{% block content %}
+<div class="page">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Course Management</h1>
+      <p class="page-subtitle">Create courses, assign faculty instructors, set attendance thresholds, and manage student enrollments.</p>
+    </div>
+    <div class="page-actions">
+      <button type="button" class="btn btn-primary btn-sm" data-modal-open="create-course-modal">
+        {{ icons.icon("plus", size=16) }}
+        <span>New Course</span>
+      </button>
+    </div>
+  </header>
+
+  {% if error %}
+    {{ ui.alert(error, variant="danger", dismissible=false) }}
+  {% endif %}
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">All Courses</h2>
+        <p class="card-subtitle">{{ total_courses or 0 }} course{{ '' if total_courses == 1 else 's' }} in the catalogue</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="get" action="/admin/courses" class="toolbar" role="search">
+        <label for="course_search" class="sr-only">Search courses</label>
+        <input
+          type="text"
+          id="course_search"
+          name="search"
+          value="{{ search or '' }}"
+          placeholder="Search courses by code or title..."
+          class="form-input flex-1"
+        />
+        <button type="submit" class="btn btn-secondary">
+          {{ icons.icon("search", size=16) }}
+          <span>Search</span>
+        </button>
+        {% if search %}
+          <a href="/admin/courses" class="btn btn-ghost">Reset</a>
+        {% endif %}
+      </form>
+    </div>
+    {% include "admin/partials/course_table.html" %}
+  </section>
+</div>
+
+{# Create Course Modal #}
+<div id="create-course-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-course-title">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h2 id="modal-course-title" class="text-lg font-semibold">Create New Course</h2>
+      <button type="button" class="btn btn-ghost btn-icon" data-modal-close aria-label="Close modal">
+        {{ icons.icon("x", size=18) }}
+      </button>
+    </div>
+    <form method="post" action="/admin/courses">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+      <div class="modal-body stack">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="course_code" class="form-label required">Course Code</label>
+            <input type="text" id="course_code" name="code" class="form-input font-mono uppercase" required placeholder="CS101" />
+          </div>
+
+          <div class="form-group">
+            <label for="course_title" class="form-label required">Course Title</label>
+            <input type="text" id="course_title" name="title" class="form-input" required placeholder="Data Structures &amp; Algorithms" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="course_teacher_id" class="form-label required">Assigned Faculty / Instructor</label>
+          <select id="course_teacher_id" name="teacher_id" class="form-select" required>
+            <option value="" disabled selected>Select Instructor...</option>
+            {% for t in teachers %}
+              <option value="{{ t.id }}">{{ t.full_name or t.email }} ({{ t.email }})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="course_min_att" class="form-label required">Minimum Attendance Threshold (%)</label>
+          <input type="number" id="course_min_att" name="min_attendance_pct" class="form-input" required value="80.0" min="0" max="100" step="0.5" aria-describedby="course_min_att-help" />
+          <span class="form-hint" id="course_min_att-help">Students below this attendance percentage will be flagged as at-risk.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Course</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

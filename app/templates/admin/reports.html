@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}Attendance Reports & Analytics — Admin Portal{% endblock %}
+
+{% block content %}
+{% set att_rate = metrics.overall_attendance_rate if (metrics.overall_attendance_rate is defined and metrics.overall_attendance_rate is not none) else none %}
+<div class="page">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Attendance Reports &amp; Compliance</h1>
+      <p class="page-subtitle">Institutional attendance metrics, compliance monitoring, and official CSV exports.</p>
+    </div>
+    <div class="page-actions">
+      <a href="/admin/reports/csv{% if selected_course_id %}?course_id={{ selected_course_id }}{% endif %}" class="btn btn-primary btn-sm" hx-boost="false" download>
+        {{ icons.icon("download", size=16) }}
+        <span>Download CSV Report</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="stat-grid stagger">
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">System Attendance</span>
+        <span class="stat-icon">{{ icons.icon("check-circle", size=20) }}</span>
+      </div>
+      {% if att_rate is not none %}
+        <div class="stat-value count-up">{{ "%.1f"|format(att_rate) }}%</div>
+      {% else %}
+        <div class="stat-value">N/A</div>
+      {% endif %}
+      <div class="stat-footer">All closed sessions</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Total Sessions</span>
+        <span class="stat-icon">{{ icons.icon("clock", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ metrics.total_sessions }}</div>
+      <div class="stat-footer">Recorded sessions</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">At-Risk Cases</span>
+        <span class="stat-icon">{{ icons.icon("alert-triangle", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up {% if at_risk_students|length > 0 %}text-danger{% endif %}">{{ at_risk_students|length }}</div>
+      <div class="stat-footer">
+        {% if at_risk_students|length > 0 %}
+          <span class="text-danger font-medium">Below course minimum</span>
+        {% else %}
+          <span class="text-present font-medium">No active warnings</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Active Courses</span>
+        <span class="stat-icon">{{ icons.icon("calendar", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ metrics.active_courses }}</div>
+      <div class="stat-footer">{{ metrics.total_courses }} total courses</div>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title cluster">
+          {{ icons.icon("alert-triangle", size=18) }}
+          <span>At-Risk Students Roster</span>
+        </h2>
+        <p class="card-subtitle">Students falling below the required attendance threshold in their courses</p>
+      </div>
+      <div class="card-actions">
+        <span class="badge {% if at_risk_students %}badge-absent{% else %}badge-present{% endif %}">{{ at_risk_students|length }} Flagged</span>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <form method="get" action="/admin/reports" class="toolbar">
+        <label for="report_course_id" class="sr-only">Filter by Course</label>
+        <select id="report_course_id" name="course_id" class="form-select flex-1">
+          <option value="" {% if not selected_course_id %}selected{% endif %}>All Institutional Courses</option>
+          {% for c in courses %}
+            <option value="{{ c.id }}" {% if selected_course_id == c.id|string %}selected{% endif %}>{{ c.code }} — {{ c.title }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary">
+          {{ icons.icon("search", size=16) }}
+          <span>Apply Filter</span>
+        </button>
+        {% if selected_course_id %}
+          <a href="/admin/reports" class="btn btn-ghost">Reset Filter</a>
+        {% endif %}
+      </form>
+    </div>
+
+    {% if at_risk_students %}
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Student</th>
+              <th scope="col">Student ID</th>
+              <th scope="col">Course</th>
+              <th scope="col">Current Att %</th>
+              <th scope="col">Required Minimum</th>
+              <th scope="col">Sessions Breakdown</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in at_risk_students %}
+              {% set s = item.student %}
+              {% set c = item.course %}
+              <tr>
+                <td data-label="Student" class="cell-primary">
+                  <div class="font-semibold">{{ s.student_name }}</div>
+                  <div class="text-xs text-muted">{{ s.student_email }}</div>
+                </td>
+                <td data-label="Student ID" class="cell-muted">
+                  <span class="font-mono text-xs font-semibold">{{ s.student_code or '—' }}</span>
+                </td>
+                <td data-label="Course">
+                  <span class="font-mono font-semibold text-primary">{{ c.code }}</span>
+                  <div class="text-xs text-muted">{{ c.title }}</div>
+                </td>
+                <td data-label="Current Att %">
+                  <span class="font-bold text-danger">{{ "%.1f"|format(s.percentage) if s.percentage is not none else '0.0' }}%</span>
+                </td>
+                <td data-label="Required Minimum">
+                  <span class="font-semibold">{{ c.min_attendance_pct }}%</span>
+                </td>
+                <td data-label="Sessions Breakdown">
+                  <div class="cluster text-xs">
+                    <span class="badge badge-present">Present {{ s.present_count }}</span>
+                    <span class="badge badge-late">Late {{ s.late_count }}</span>
+                    <span class="badge badge-absent">Absent {{ s.absent_count }}</span>
+                    <span class="text-muted">({{ s.total_sessions }} total)</span>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="card-body">
+        {{ ui.empty_state("No students currently at risk", description="All enrolled students meet the attendance requirements for inspected courses.", icon="check-circle") }}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

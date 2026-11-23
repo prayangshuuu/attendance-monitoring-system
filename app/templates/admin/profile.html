@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}Administrator Profile — Attendance Monitoring System{% endblock %}
+
+{% block content %}
+<div class="page page-narrow">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Administrator Profile</h1>
+      <p class="page-subtitle">System administrator credentials, privilege settings, and account security.</p>
+    </div>
+  </header>
+
+  {% if success %}
+    {{ ui.alert(success, variant="success", dismissible=false) }}
+  {% endif %}
+  {% if error %}
+    {{ ui.alert(error, variant="danger", dismissible=false) }}
+  {% endif %}
+
+  <section class="card">
+    <div class="card-header">
+      <div class="flex items-center gap-4">
+        <span class="avatar avatar-lg" aria-hidden="true">{{ (user.full_name or user.email)[0]|upper }}</span>
+        <div>
+          <h2 class="card-title">{{ user.full_name or 'System Administrator' }}</h2>
+          <div class="cluster mt-1">
+            <span class="badge badge-primary">Administrator</span>
+            <span class="text-sm text-muted">{{ user.email }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <dl class="kv">
+        <div class="kv-row">
+          <dt class="kv-key">Account Email</dt>
+          <dd class="kv-value">{{ user.email }}</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Role &amp; Permissions</dt>
+          <dd class="kv-value">Full System Administrator (RBAC)</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Platform Total Users</dt>
+          <dd class="kv-value">{{ metrics.total_users }} registered accounts</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Account Status</dt>
+          <dd class="kv-value"><span class="badge badge-present">Active</span></dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title cluster">
+          {{ icons.icon("key", size=18) }}
+          <span>Change Administrator Password</span>
+        </h2>
+        <p class="card-subtitle">Update your security credentials. Strong passwords must be at least 8 characters long.</p>
+      </div>
+    </div>
+    <form method="post" action="/admin/profile/password">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+      <div class="card-body stack">
+        <div class="form-group">
+          <label for="old_password" class="form-label required">Current Password</label>
+          <input type="password" id="old_password" name="old_password" class="form-input" required autocomplete="current-password" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="new_password" class="form-label required">New Password</label>
+            <input type="password" id="new_password" name="new_password" class="form-input" required minlength="8" autocomplete="new-password" aria-describedby="new_password-help" />
+            <span class="form-hint" id="new_password-help">At least 8 characters with letters and numbers.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="confirm_password" class="form-label required">Confirm New Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" class="form-input" required minlength="8" autocomplete="new-password" />
+          </div>
+        </div>
+      </div>
+      <div class="card-footer">
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">
+            {{ icons.icon("check", size=16) }}
+            <span>Update Password</span>
+          </button>
+        </div>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

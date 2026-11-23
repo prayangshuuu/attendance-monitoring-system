@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}My Courses — Teacher Portal{% endblock %}
+
+{% block content %}
+<div class="page animate-in">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">My Courses</h1>
+      <p class="page-subtitle">Courses assigned to you. Open a course to see its roster and sessions.</p>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">All Courses</h2>
+        <p class="card-subtitle">{{ total_courses }} course{{ '' if total_courses == 1 else 's' }}</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="get" action="/teacher/courses" class="toolbar" role="search">
+        <input
+          type="search"
+          name="search"
+          value="{{ search or '' }}"
+          placeholder="Search by course code or title..."
+          class="form-input flex-1"
+          aria-label="Search courses"
+        />
+        <button type="submit" class="btn btn-secondary btn-sm">
+          {{ icons.icon("search", size=16) }}
+          <span>Search</span>
+        </button>
+        {% if search %}
+          <a href="/teacher/courses" class="btn btn-ghost btn-sm">Reset</a>
+        {% endif %}
+      </form>
+    </div>
+
+    {% if courses %}
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Course</th>
+              <th scope="col">Min Attendance</th>
+              <th scope="col">Enrolled</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in course_items %}
+              {% set c = item.course %}
+              <tr>
+                <td class="cell-primary" data-label="Course">
+                  <a href="/teacher/courses/{{ c.id }}" class="font-mono font-semibold text-primary">{{ c.code }}</a>
+                  <div class="text-sm text-muted">{{ c.title }}</div>
+                </td>
+                <td data-label="Min Attendance">{{ ui.badge(c.min_attendance_pct ~ "%", variant="neutral") }}</td>
+                <td data-label="Enrolled"><span class="font-semibold">{{ item.enrolled_count }}</span> <span class="text-muted text-sm">students</span></td>
+                <td data-label="Status">
+                  {% if c.is_active %}
+                    <span class="badge badge-present"><span class="pulse-dot" aria-hidden="true"></span> Active</span>
+                  {% else %}
+                    {{ ui.badge("Inactive", variant="neutral") }}
+                  {% endif %}
+                </td>
+                <td class="cell-actions" data-label="Actions">
+                  <div class="cluster justify-end">
+                    <a href="/teacher/sessions?course_id={{ c.id }}" class="btn btn-ghost btn-sm" title="Schedule / view sessions">
+                      {{ icons.icon("calendar", size=14) }}
+                      <span>Sessions</span>
+                    </a>
+                    <a href="/teacher/courses/{{ c.id }}" class="btn btn-outline btn-sm">View Course</a>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if total_pages > 1 %}
+        <div class="card-footer">
+          {{ ui.pagination(current_page=current_page, total_pages=total_pages, total_items=total_courses, base_url="/teacher/courses", query=pagination_query|default("")) }}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="card-body">
+        {% if search %}
+          {{ ui.empty_state("No courses found", description='No courses matched "' ~ search ~ '".', icon="search", action_text="Clear search", action_url="/teacher/courses") }}
+        {% else %}
+          {{ ui.empty_state("No courses found", description="You currently have no courses assigned to your account.", icon="book") }}
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

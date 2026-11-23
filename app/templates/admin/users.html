@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}User Management — Admin Portal{% endblock %}
+
+{% block content %}
+<div class="page">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">User Management</h1>
+      <p class="page-subtitle">Create, search, filter, and manage student, teacher, and administrator accounts.</p>
+    </div>
+    <div class="page-actions">
+      <button type="button" class="btn btn-secondary btn-sm" data-modal-open="import-users-modal">
+        {{ icons.icon("download", size=16) }}
+        <span>Bulk CSV Import</span>
+      </button>
+      <button type="button" class="btn btn-primary btn-sm" data-modal-open="create-user-modal">
+        {{ icons.icon("plus", size=16) }}
+        <span>New User</span>
+      </button>
+    </div>
+  </header>
+
+  {% if error %}
+    {{ ui.alert(error, variant="danger", dismissible=false) }}
+  {% endif %}
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">All Users</h2>
+        <p class="card-subtitle">{{ total_users or 0 }} account{{ '' if total_users == 1 else 's' }} on the platform</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="get" action="/admin/users" class="toolbar" role="search">
+        <label for="search" class="sr-only">Search Users</label>
+        <input
+          type="text"
+          id="search"
+          name="search"
+          value="{{ q or '' }}"
+          placeholder="Search by name, email, or student ID..."
+          class="form-input flex-1"
+        />
+        <label for="role" class="sr-only">Filter Role</label>
+        <select id="role" name="role" class="form-select">
+          <option value="" {% if not selected_role %}selected{% endif %}>All Roles</option>
+          <option value="student" {% if selected_role == 'student' %}selected{% endif %}>Student</option>
+          <option value="teacher" {% if selected_role == 'teacher' %}selected{% endif %}>Teacher</option>
+          <option value="admin" {% if selected_role == 'admin' %}selected{% endif %}>Admin</option>
+        </select>
+        <button type="submit" class="btn btn-secondary">
+          {{ icons.icon("search", size=16) }}
+          <span>Search</span>
+        </button>
+        {% if q or selected_role %}
+          <a href="/admin/users" class="btn btn-ghost">Reset</a>
+        {% endif %}
+      </form>
+    </div>
+    {% include "admin/partials/user_table.html" %}
+  </section>
+</div>
+
+{# Create User Modal #}
+<div id="create-user-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-user-title">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h2 id="modal-user-title" class="text-lg font-semibold">Create New Account</h2>
+      <button type="button" class="btn btn-ghost btn-icon" data-modal-close aria-label="Close modal">
+        {{ icons.icon("x", size=18) }}
+      </button>
+    </div>
+    <form method="post" action="/admin/users">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+      <div class="modal-body stack">
+        <div class="form-group">
+          <label for="user_email" class="form-label required">Email address</label>
+          <input type="email" id="user_email" name="email" class="form-input" required placeholder="user@example.com" />
+        </div>
+
+        <div class="form-group">
+          <label for="user_name" class="form-label required">Full name</label>
+          <input type="text" id="user_name" name="full_name" class="form-input" required placeholder="Jane Doe" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="user_role" class="form-label required">Role</label>
+            <select id="user_role" name="role" class="form-select" required>
+              <option value="student" selected>Student</option>
+              <option value="teacher">Teacher</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="student-id-field">
+            <label for="user_student_id" class="form-label">Student ID Code</label>
+            <input type="text" id="user_student_id" name="student_id" class="form-input" placeholder="STU-00123" aria-describedby="user_student_id-help" />
+            <span class="form-hint" id="user_student_id-help">Required for students; ignored for other roles.</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="user_password" class="form-label required">Temporary Password</label>
+          <input type="password" id="user_password" name="password" class="form-input" required minlength="8" placeholder="••••••••" autocomplete="new-password" />
+          <span class="form-hint">At least 8 characters with letters &amp; numbers.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Create User</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Bulk CSV Import Modal #}
+<div id="import-users-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-import-title">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h2 id="modal-import-title" class="text-lg font-semibold">Bulk Import Users (CSV)</h2>
+      <button type="button" class="btn btn-ghost btn-icon" data-modal-close aria-label="Close modal">
+        {{ icons.icon("x", size=18) }}
+      </button>
+    </div>
+    <form method="post" action="/admin/users/import" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+      <div class="modal-body stack">
+        <p class="text-sm text-muted">
+          Upload a CSV file containing user accounts. The CSV must contain header columns:
+          <code class="font-mono text-primary">email, full_name, role, password, student_id</code>.
+        </p>
+
+        <div class="form-group">
+          <label for="import_file" class="form-label required">Select CSV file</label>
+          <input type="file" id="import_file" name="file" accept=".csv" required class="form-input" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Upload &amp; Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

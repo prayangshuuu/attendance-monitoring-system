@@ -55,6 +55,14 @@ class AuthService:
             token_type="bearer",  # nosec B106
         )
 
+    async def authenticate_user(
+        self,
+        session: AsyncSession,
+        email: str,
+        password: str,
+    ) -> TokenResponse:
+        return await self.authenticate(session=session, email=email, password=password)
+
     async def refresh(
         self,
         session: AsyncSession,

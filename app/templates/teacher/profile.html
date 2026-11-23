@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+{% import "teacher/partials/_macros.html" as tm %}
+
+{% block title %}Teacher Profile — Attendance Monitoring System{% endblock %}
+
+{% block content %}
+<div class="page page-narrow animate-in">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Profile</h1>
+      <p class="page-subtitle">Your account details and password.</p>
+    </div>
+  </header>
+
+  {% if error %}
+    {{ ui.alert(error, variant="danger", dismissible=false) }}
+  {% endif %}
+  {% if success %}
+    {{ ui.alert(success, variant="success", dismissible=false) }}
+  {% endif %}
+
+  <section class="card">
+    <div class="card-header">
+      <div class="flex items-center gap-4">
+        <span class="avatar avatar-lg" aria-hidden="true">{{ tm.initials(user.full_name or user.email) }}</span>
+        <div>
+          <h2 class="card-title">{{ user.full_name or user.email }}</h2>
+          <div class="cluster mt-1">
+            {{ ui.badge("Teacher", variant="primary") }}
+            <span class="text-sm text-muted">{{ user.email }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <dl class="kv">
+        <div class="kv-row">
+          <dt class="kv-key">Email</dt>
+          <dd class="kv-value">{{ user.email }}</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Role</dt>
+          <dd class="kv-value capitalize">{{ (user.role.value if user.role.value is defined else user.role)|string|lower }}</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Courses assigned</dt>
+          <dd class="kv-value">{{ courses_count }} course{{ '' if courses_count == 1 else 's' }}</dd>
+        </div>
+        <div class="kv-row">
+          <dt class="kv-key">Account status</dt>
+          <dd class="kv-value">
+            {% if user.is_active %}
+              {{ ui.badge("Active", variant="present") }}
+            {% else %}
+              {{ ui.badge("Inactive", variant="neutral") }}
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Change Password</h2>
+        <p class="card-subtitle">At least 8 characters, including a letter and a number.</p>
+      </div>
+    </div>
+    <form method="post" action="/teacher/profile/password">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+      <div class="card-body stack">
+        <div class="form-group">
+          <label for="old_password" class="form-label required">Current Password</label>
+          <input type="password" id="old_password" name="old_password" class="form-input" required autocomplete="current-password" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="new_password" class="form-label required">New Password</label>
+            <input type="password" id="new_password" name="new_password" class="form-input" required minlength="8" autocomplete="new-password" aria-describedby="new_password_help" />
+            <span class="form-hint" id="new_password_help">Min. 8 characters with a letter and a number.</span>
+          </div>
+          <div class="form-group">
+            <label for="confirm_password" class="form-label required">Confirm New Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" class="form-input" required minlength="8" autocomplete="new-password" />
+          </div>
+        </div>
+      </div>
+      <div class="card-footer form-actions">
+        <button type="submit" class="btn btn-primary">
+          {{ icons.icon("key", size=16) }}
+          <span>Update Password</span>
+        </button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

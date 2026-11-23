@@ -36,7 +36,10 @@ async def test_security_headers_in_development(client: AsyncClient) -> None:
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
     assert response.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
-    assert response.headers.get("content-security-policy") == "default-src 'self'"
+    assert (
+        response.headers.get("content-security-policy")
+        == "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    )
     # HSTS should NOT be present in development
     assert "strict-transport-security" not in response.headers
 
@@ -59,7 +62,10 @@ async def test_security_headers_in_production() -> None:
             assert response.headers.get("x-content-type-options") == "nosniff"
             assert response.headers.get("x-frame-options") == "DENY"
             assert response.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
-            assert response.headers.get("content-security-policy") == "default-src 'self'"
+            assert (
+                response.headers.get("content-security-policy")
+                == "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+            )
             assert (
                 response.headers.get("strict-transport-security")
                 == "max-age=31536000; includeSubDomains"

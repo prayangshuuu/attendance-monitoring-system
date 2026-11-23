@@ -1,0 +1,28 @@
+{% import "components/components.html" as ui %}
+{# Live roster table. Rendered inside #live-roster-container on the live session page
+   and returned on its own by GET/POST /teacher/sessions/{id}/roster|attendance (HTMX). #}
+{% if roster and roster.items %}
+  <div class="table-container">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Student</th>
+          <th scope="col">Student ID</th>
+          <th scope="col">Status</th>
+          <th scope="col">Check-in (UTC)</th>
+          <th scope="col">Method</th>
+          <th scope="col" class="text-right">Manual Override</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in roster.items %}
+          {% include "teacher/partials/roster_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="card-body">
+    {{ ui.empty_state("No students enrolled", description="No students are enrolled in this course roster.", icon="users") }}
+  </div>
+{% endif %}

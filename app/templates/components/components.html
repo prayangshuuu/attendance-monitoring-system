@@ -1,0 +1,348 @@
+{% import "components/icons.html" as icons %}
+
+{# ==========================================================================
+   BUTTON COMPONENT
+   ========================================================================== #}
+{% macro button(text="", type="button", variant="primary", size="md", icon=none, hx_get=none, hx_post=none, hx_put=none, hx_delete=none, hx_target=none, hx_swap=none, hx_confirm=none, hx_indicator=none, disabled=false, class_name="", id=none, name=none, value=none) %}
+<button
+  type="{{ type }}"
+  {% if id %}id="{{ id }}"{% endif %}
+  {% if name %}name="{{ name }}"{% endif %}
+  {% if value %}value="{{ value }}"{% endif %}
+  class="btn btn-{{ variant }} {% if size != 'md' %}btn-{{ size }}{% endif %} {{ class_name }}"
+  {% if disabled %}disabled aria-disabled="true"{% endif %}
+  {% if hx_get %}hx-get="{{ hx_get }}"{% endif %}
+  {% if hx_post %}hx-post="{{ hx_post }}"{% endif %}
+  {% if hx_put %}hx-put="{{ hx_put }}"{% endif %}
+  {% if hx_delete %}hx-delete="{{ hx_delete }}"{% endif %}
+  {% if hx_target %}hx-target="{{ hx_target }}"{% endif %}
+  {% if hx_swap %}hx-swap="{{ hx_swap }}"{% endif %}
+  {% if hx_confirm %}hx-confirm="{{ hx_confirm }}"{% endif %}
+  {% if hx_indicator %}hx-indicator="{{ hx_indicator }}"{% endif %}
+>
+  {% if icon %}
+    {{ icons.icon(icon, size=18) }}
+  {% endif %}
+  {% if text %}<span>{{ text }}</span>{% endif %}
+  {{ caller() if caller else '' }}
+</button>
+{% endmacro %}
+
+
+{# ==========================================================================
+   FORM FIELD COMPONENT (with error rendering & accessibility)
+   ========================================================================== #}
+{% macro field(name, label, type="text", value="", error=none, placeholder="", required=false, disabled=false, help_text=none, options=none, rows=3, attrs={}, class_name="") %}
+<div class="form-group {{ class_name }}">
+  {% if type == "checkbox" %}
+    <label class="form-check" for="{{ name }}">
+      <input
+        type="checkbox"
+        id="{{ name }}"
+        name="{{ name }}"
+        value="{{ value or 'true' }}"
+        class="form-check-input {% if error %}is-invalid{% endif %}"
+        {% if value and value not in ['false', '0', False] %}checked{% endif %}
+        {% if required %}required{% endif %}
+        {% if disabled %}disabled{% endif %}
+        {% if error %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}
+        {% for k, v in attrs.items() %}{{ k }}="{{ v }}" {% endfor %}
+      />
+      <span class="form-check-label">{{ label }} {% if required %}<span class="text-danger">*</span>{% endif %}</span>
+    </label>
+  {% else %}
+    <label for="{{ name }}" class="form-label {% if required %}required{% endif %}">
+      {{ label }}
+    </label>
+
+    {% if type == "select" %}
+      <select
+        id="{{ name }}"
+        name="{{ name }}"
+        class="form-select {% if error %}is-invalid{% endif %}"
+        {% if required %}required{% endif %}
+        {% if disabled %}disabled{% endif %}
+        {% if error %}aria-invalid="true" aria-describedby="{{ name }}-error"{% elif help_text %}aria-describedby="{{ name }}-help"{% endif %}
+        {% for k, v in attrs.items() %}{{ k }}="{{ v }}" {% endfor %}
+      >
+        {% if placeholder %}
+          <option value="" disabled {% if not value %}selected{% endif %}>{{ placeholder }}</option>
+        {% endif %}
+        {% if options %}
+          {% for opt in options %}
+            {% if opt is mapping %}
+              <option value="{{ opt.value }}" {% if opt.value|string == value|string %}selected{% endif %}>{{ opt.label }}</option>
+            {% elif opt is sequence and opt is not string %}
+              <option value="{{ opt[0] }}" {% if opt[0]|string == value|string %}selected{% endif %}>{{ opt[1] }}</option>
+            {% else %}
+              <option value="{{ opt }}" {% if opt|string == value|string %}selected{% endif %}>{{ opt }}</option>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </select>
+    {% elif type == "textarea" %}
+      <textarea
+        id="{{ name }}"
+        name="{{ name }}"
+        rows="{{ rows }}"
+        class="form-textarea {% if error %}is-invalid{% endif %}"
+        placeholder="{{ placeholder }}"
+        {% if required %}required{% endif %}
+        {% if disabled %}disabled{% endif %}
+        {% if error %}aria-invalid="true" aria-describedby="{{ name }}-error"{% elif help_text %}aria-describedby="{{ name }}-help"{% endif %}
+        {% for k, v in attrs.items() %}{{ k }}="{{ v }}" {% endfor %}
+      >{{ value }}</textarea>
+    {% else %}
+      <input
+        type="{{ type }}"
+        id="{{ name }}"
+        name="{{ name }}"
+        value="{{ value }}"
+        class="form-input {% if error %}is-invalid{% endif %}"
+        placeholder="{{ placeholder }}"
+        {% if required %}required{% endif %}
+        {% if disabled %}disabled{% endif %}
+        {% if error %}aria-invalid="true" aria-describedby="{{ name }}-error"{% elif help_text %}aria-describedby="{{ name }}-help"{% endif %}
+        {% for k, v in attrs.items() %}{{ k }}="{{ v }}" {% endfor %}
+      />
+    {% endif %}
+  {% endif %}
+
+  {% if help_text and not error %}
+    <span class="form-hint" id="{{ name }}-help">{{ help_text }}</span>
+  {% endif %}
+
+  {% if error %}
+    <span class="form-error" id="{{ name }}-error" role="alert">
+      {{ icons.icon("alert-circle", size=14) }}
+      {{ error }}
+    </span>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ==========================================================================
+   TABLE COMPONENT (Responsive with stacked cards below 640px)
+   ========================================================================== #}
+{% macro table(headers=[], rows=[], class_name="", responsive=true, empty_message="No records found") %}
+{% if rows and rows|length > 0 %}
+  <table class="table {% if responsive %}responsive-table{% endif %} {{ class_name }}">
+    <thead>
+      <tr>
+        {% for header in headers %}
+          <th scope="col">{{ header }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          {% for cell in row %}
+            {% set header_label = headers[loop.index0] if headers and loop.index0 < headers|length else "" %}
+            <td data-label="{{ header_label }}">{{ cell }}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <div class="empty-state">
+    <div class="empty-state-icon">{{ icons.icon("inbox", size=36) }}</div>
+    <div class="empty-state-description">{{ empty_message }}</div>
+  </div>
+{% endif %}
+{% endmacro %}
+
+
+{# ==========================================================================
+   BADGE COMPONENT
+   ========================================================================== #}
+{% macro badge(text, variant="neutral", size="md", class_name="") %}
+<span class="badge badge-{{ variant }} {% if size != 'md' %}badge-{{ size }}{% endif %} {{ class_name }}">
+  {% if variant == "present" %}
+    {{ icons.icon("check", size=12) }}
+  {% elif variant == "late" %}
+    {{ icons.icon("clock", size=12) }}
+  {% elif variant == "absent" %}
+    {{ icons.icon("x", size=12) }}
+  {% elif variant == "excused" %}
+    {{ icons.icon("info", size=12) }}
+  {% endif %}
+  {{ text }}
+</span>
+{% endmacro %}
+
+
+{# ==========================================================================
+   STAT CARD COMPONENT
+   ========================================================================== #}
+{% macro stat_card(title, value, subtitle=none, icon=none, change=none, change_type="neutral", class_name="", id=none) %}
+<div class="stat-card {{ class_name }}" {% if id %}id="{{ id }}"{% endif %}>
+  <div class="stat-header">
+    <span class="stat-label">{{ title }}</span>
+    {% if icon %}
+      <span class="stat-icon">{{ icons.icon(icon, size=20) }}</span>
+    {% endif %}
+  </div>
+  <div class="stat-value">{{ value }}</div>
+  {% if subtitle or change %}
+    <div class="stat-footer">
+      {% if change %}
+        <span class="{% if change_type == 'up' %}stat-change-up{% elif change_type == 'down' %}stat-change-down{% else %}text-muted{% endif %}">
+          {{ change }}
+        </span>
+      {% endif %}
+      {% if subtitle %}
+        <span>{{ subtitle }}</span>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ==========================================================================
+   ALERT BANNER COMPONENT
+   ========================================================================== #}
+{% macro alert(message, variant="info", title=none, dismissible=true, class_name="") %}
+<div class="alert alert-{{ variant }} {{ class_name }}" role="alert">
+  <div class="alert-icon">
+    {% if variant == "success" %}
+      {{ icons.icon("check-circle", size=20) }}
+    {% elif variant == "warning" %}
+      {{ icons.icon("alert-triangle", size=20) }}
+    {% elif variant == "danger" %}
+      {{ icons.icon("alert-circle", size=20) }}
+    {% else %}
+      {{ icons.icon("info", size=20) }}
+    {% endif %}
+  </div>
+  <div class="alert-content">
+    {% if title %}
+      <div class="alert-title">{{ title }}</div>
+    {% endif %}
+    <div>{{ message }}</div>
+  </div>
+  {% if dismissible %}
+    <button type="button" class="alert-close" aria-label="Dismiss" data-alert-dismiss>
+      {{ icons.icon("x", size=16) }}
+    </button>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ==========================================================================
+   PAGINATION COMPONENT
+   ========================================================================== #}
+{% macro pagination(current_page, total_pages, total_items=none, base_url="", hx_target=none, hx_swap="innerHTML", query="") %}
+{% set qs = (query ~ "&") if query else "" %}
+{% if total_pages > 1 %}
+<nav class="pagination" aria-label="Pagination">
+  <div class="pagination-info">
+    Page <strong>{{ current_page }}</strong> of <strong>{{ total_pages }}</strong>
+    {% if total_items is not none %}({{ total_items }} total items){% endif %}
+  </div>
+  <div class="pagination-links">
+    {% set prev_page = current_page - 1 %}
+    {% set next_page = current_page + 1 %}
+    
+    {# Previous Page Button #}
+    {% if current_page > 1 %}
+      <a
+        href="{{ base_url }}?{{ qs }}page={{ prev_page }}"
+        class="btn btn-secondary btn-sm"
+        {% if hx_target %}hx-get="{{ base_url }}?{{ qs }}page={{ prev_page }}" hx-target="{{ hx_target }}" hx-swap="{{ hx_swap }}"{% endif %}
+        aria-label="Previous Page"
+      >
+        {{ icons.icon("chevron-left", size=16) }}
+        <span>Previous</span>
+      </a>
+    {% else %}
+      <button class="btn btn-secondary btn-sm" disabled aria-disabled="true">
+        {{ icons.icon("chevron-left", size=16) }}
+        <span>Previous</span>
+      </button>
+    {% endif %}
+
+    {# Next Page Button #}
+    {% if current_page < total_pages %}
+      <a
+        href="{{ base_url }}?{{ qs }}page={{ next_page }}"
+        class="btn btn-secondary btn-sm"
+        {% if hx_target %}hx-get="{{ base_url }}?{{ qs }}page={{ next_page }}" hx-target="{{ hx_target }}" hx-swap="{{ hx_swap }}"{% endif %}
+        aria-label="Next Page"
+      >
+        <span>Next</span>
+        {{ icons.icon("chevron-right", size=16) }}
+      </a>
+    {% else %}
+      <button class="btn btn-secondary btn-sm" disabled aria-disabled="true">
+        <span>Next</span>
+        {{ icons.icon("chevron-right", size=16) }}
+      </button>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}
+{% endmacro %}
+
+
+{# ==========================================================================
+   EMPTY STATE COMPONENT
+   ========================================================================== #}
+{% macro empty_state(title, description=none, icon="inbox", action_text=none, action_url=none, action_hx=none, class_name="") %}
+<div class="empty-state {{ class_name }}">
+  <div class="empty-state-icon">
+    {{ icons.icon(icon, size=48) }}
+  </div>
+  <h3 class="empty-state-title">{{ title }}</h3>
+  {% if description %}
+    <p class="empty-state-description">{{ description }}</p>
+  {% endif %}
+  {% if action_text and (action_url or action_hx) %}
+    <div class="empty-state-actions">
+      {% if action_hx %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          {% for k, v in action_hx.items() %}{{ k }}="{{ v }}" {% endfor %}
+        >
+          {{ action_text }}
+        </button>
+      {% elif action_url %}
+        <a href="{{ action_url }}" class="btn btn-primary">
+          {{ action_text }}
+        </a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{# ==========================================================================
+   PROGRESS BAR COMPONENT (CSP-safe: no inline styles)
+   Width: .progress-w-{0..100 step 5} class (no-JS fallback) + data-value read
+   by app.js, which animates the exact width via element.style.
+   Height: "4px"/"6px" -> .progress-sm, "8px" (default) -> .progress-md,
+   "10px"/"12px"+ -> .progress-lg.
+   ========================================================================== #}
+{% macro progress_bar(value=0, max=100, min_threshold=none, variant=none, height="8px", class_name="") %}
+{% set safe_val = (value if value is not none else 0)|float %}
+{% set safe_max = (max if max is not none and max > 0 else 100)|float %}
+{% set pct = [0.0, [100.0, (safe_val / safe_max) * 100.0]|min]|max %}
+{% set bar_variant = variant if variant else ("danger" if min_threshold is not none and pct < min_threshold else "present") %}
+{% set h = (height|string)|replace("px", "")|trim %}
+{% set h_num = h|int(8) %}
+{% set size_class = "progress-sm" if h_num <= 6 else ("progress-lg" if h_num >= 10 else "progress-md") %}
+{% set step = ((pct / 5)|round|int) * 5 %}
+<div class="progress {{ size_class }} {{ class_name }}" role="progressbar" aria-valuenow="{{ safe_val|round(1) }}" aria-valuemin="0" aria-valuemax="{{ safe_max }}" aria-label="Progress: {{ pct|round(1) }}%">
+  <div class="progress-bar progress-bar-{{ bar_variant }} progress-w-{{ step }} animate-fill" data-value="{{ pct|round(1) }}"></div>
+  {% if min_threshold is not none and min_threshold > 0 and min_threshold < 100 %}
+    {% set thresh_step = ((min_threshold / 5)|round|int) * 5 %}
+    <div class="progress-threshold-marker threshold-left-{{ thresh_step }}" data-threshold="{{ min_threshold }}" title="Minimum Required: {{ min_threshold }}%"></div>
+  {% endif %}
+</div>
+{% endmacro %}

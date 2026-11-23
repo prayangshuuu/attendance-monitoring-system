@@ -1,13 +1,15 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -23,6 +25,11 @@ from app.core.middleware import (
 )
 from app.db.session import engine, get_db
 from app.schemas.common import ErrorResponse
+from app.web.admin import router as web_admin_router
+from app.web.auth import router as web_auth_router
+from app.web.deps import attach_staged_cookies
+from app.web.student import router as web_student_router
+from app.web.teacher import router as web_teacher_router
 from scripts.create_admin import bootstrap_admin
 
 settings = get_settings()
@@ -46,6 +53,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await bootstrap_admin()
     yield
     await engine.dispose()
+
+
+def _wants_html(request: Request) -> bool:
+    """Browser page requests (not the JSON API, not htmx partials) get HTML error pages."""
+    if request.url.path.startswith("/api/"):
+        return False
+    if request.headers.get("HX-Request") == "true" and request.headers.get("HX-Boosted") != "true":
+        return False
+    return "text/html" in request.headers.get("accept", "")
+
+
+def _html_error(request: Request, status_code: int, message: str | None = None) -> Response:
+    from app.web.deps import render_template
+
+    template = status_code if status_code in (400, 401, 403, 404) else 500
+    return render_template(
+        request=request,
+        template_name=f"errors/{template}.html",
+        context={"message": message},
+        status_code=status_code,
+    )
 
 
 def create_app() -> FastAPI:
@@ -105,9 +133,34 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
+        if 300 <= exc.status_code < 400 and exc.headers and "Location" in exc.headers:
+            location = exc.headers["Location"]
+            if request.headers.get("HX-Request") == "true":
+                redirect_resp: Response = Response(
+                    status_code=200, headers={"HX-Redirect": location}
+                )
+            else:
+                redirect_resp = RedirectResponse(
+                    url=location,
+                    status_code=exc.status_code,
+                    headers=exc.headers,
+                )
+            attach_staged_cookies(request, redirect_resp)
+            return redirect_resp
+
+        if exc.status_code == 401 and request.headers.get("HX-Request") == "true":
+            return Response(status_code=200, headers={"HX-Redirect": "/login"})
+
+        if _wants_html(request) and exc.status_code in (400, 403, 404, 405, 500):
+            status_code = 404 if exc.status_code == 405 else exc.status_code
+            detail = exc.detail if exc.status_code in (400, 403) else None
+            return _html_error(request, status_code, str(detail) if detail else None)
+
+        headers = dict(exc.headers) if exc.headers else None
         return JSONResponse(
             status_code=exc.status_code,
+            headers=headers,
             content={
                 "error": {
                     "code": HTTP_STATUS_CODES.get(exc.status_code, "HTTP_ERROR"),
@@ -118,8 +171,13 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
         logger.exception("An unexpected error occurred: %s", exc)
+        if _wants_html(request):
+            try:
+                return _html_error(request, 500)
+            except Exception:  # pragma: no cover - never fail the error path
+                logger.exception("Failed to render HTML error page")
         return JSONResponse(
             status_code=500,
             content={
@@ -140,6 +198,14 @@ def create_app() -> FastAPI:
             db_status = "error"
         return {"status": "ok", "database": db_status}
 
+    static_dir = Path("app/static")
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    app.include_router(web_auth_router)
+    app.include_router(web_admin_router)
+    app.include_router(web_teacher_router)
+    app.include_router(web_student_router)
     app.include_router(api_router, prefix="/api/v1")
 
     return app

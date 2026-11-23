@@ -1,0 +1,69 @@
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{# Standalone HTMX partial: wrapper id matches the hx-target on the courses page. #}
+<div id="courses-table-container">
+  {% if course_items %}
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Code</th>
+            <th scope="col">Title</th>
+            <th scope="col">Instructor</th>
+            <th scope="col">Min Att %</th>
+            <th scope="col">Enrolled</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in course_items %}
+            {% set c = item.course %}
+            <tr>
+              <td data-label="Code">
+                <span class="font-mono font-semibold text-primary">{{ c.code }}</span>
+              </td>
+              <td data-label="Title" class="cell-primary">{{ c.title }}</td>
+              <td data-label="Instructor" class="cell-muted">{{ item.teacher_name }}</td>
+              <td data-label="Min Att %">
+                <span class="badge badge-neutral">{{ c.min_attendance_pct }}%</span>
+              </td>
+              <td data-label="Enrolled">
+                <span class="font-semibold">{{ item.enrolled_count }}</span>
+              </td>
+              <td data-label="Status">
+                {% if c.is_active %}
+                  <span class="badge badge-present">Active</span>
+                {% else %}
+                  <span class="badge badge-neutral">Inactive</span>
+                {% endif %}
+              </td>
+              <td data-label="Actions" class="cell-actions">
+                <div class="cluster justify-end">
+                  <a href="/admin/courses/{{ c.id }}/enrollments" class="btn btn-secondary btn-sm">
+                    {{ icons.icon("users", size=14) }}
+                    <span>Enrollments</span>
+                  </a>
+                  <a href="/admin/sessions?course_id={{ c.id }}" class="btn btn-ghost btn-sm btn-icon" title="Sessions" aria-label="Sessions for {{ c.code }}">
+                    {{ icons.icon("calendar", size=14) }}
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if total_pages > 1 %}
+      <div class="card-footer">
+        {{ ui.pagination(current_page=current_page, total_pages=total_pages, total_items=total_courses, base_url="/admin/courses", query=pagination_query|default("")) }}
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="card-body">
+      {{ ui.empty_state("No courses found", description="Try a different search query or create a new course.", icon="book") }}
+    </div>
+  {% endif %}
+</div>

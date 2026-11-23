@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+
+{% block title %}Admin Dashboard — Attendance Monitoring System{% endblock %}
+
+{% block content %}
+{% set att_rate = metrics.overall_attendance_rate if (metrics.overall_attendance_rate is defined and metrics.overall_attendance_rate is not none) else none %}
+{% set at_risk = metrics.at_risk_count or 0 %}
+<div class="page stagger">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Institutional Administration</h1>
+      <p class="page-subtitle">System metrics, attendance compliance, and platform operations.</p>
+    </div>
+    <div class="page-actions">
+      <a href="/admin/reports" class="btn btn-secondary btn-sm">
+        {{ icons.icon("download", size=16) }}
+        <span>Reports</span>
+      </a>
+      <a href="/admin/users" class="btn btn-secondary btn-sm">
+        {{ icons.icon("users", size=16) }}
+        <span>Manage Users</span>
+      </a>
+      <a href="/admin/courses" class="btn btn-primary btn-sm">
+        {{ icons.icon("book", size=16) }}
+        <span>Manage Courses</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="stat-grid stagger">
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Total Users</span>
+        <span class="stat-icon">{{ icons.icon("users", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ metrics.total_users }}</div>
+      <div class="stat-footer">
+        <span>{{ metrics.users_by_role.student if metrics.users_by_role else 0 }} students &middot; {{ metrics.users_by_role.teacher if metrics.users_by_role else 0 }} teachers</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Active Courses</span>
+        <span class="stat-icon">{{ icons.icon("book", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ metrics.active_courses }}</div>
+      <div class="stat-footer">
+        <span>{{ metrics.total_courses }} total courses</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">System Attendance</span>
+        <span class="stat-icon">{{ icons.icon("check-circle", size=20) }}</span>
+      </div>
+      {% if att_rate is not none %}
+        <div class="stat-value count-up">{{ "%.1f"|format(att_rate) }}%</div>
+        <div class="progress mt-2" role="progressbar" aria-label="System attendance" aria-valuenow="{{ '%.1f'|format(att_rate) }}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar progress-bar-{{ 'present' if att_rate >= 75 else 'warning' }} animate-fill" data-value="{{ '%.1f'|format(att_rate) }}"></div>
+        </div>
+      {% else %}
+        <div class="stat-value">N/A</div>
+      {% endif %}
+      <div class="stat-footer">
+        <span>{{ metrics.total_sessions }} total sessions</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">At-Risk Students</span>
+        <span class="stat-icon">{{ icons.icon("alert-triangle", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up {% if at_risk > 0 %}text-danger{% endif %}">{{ at_risk }}</div>
+      <div class="stat-footer">
+        {% if at_risk > 0 %}
+          <span class="text-danger font-medium">Below course minimum</span>
+        {% else %}
+          <span class="text-present font-medium">All thresholds met</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if active_sessions %}
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title cluster">
+            <span class="badge badge-present pulse-dot"><span class="status-dot"></span>LIVE NOW</span>
+            <span>Active Class Sessions</span>
+          </h2>
+          <p class="card-subtitle">Sessions currently accepting check-ins</p>
+        </div>
+        <div class="card-actions">
+          <a href="/admin/sessions?status=open" class="btn btn-ghost btn-sm">View all</a>
+        </div>
+      </div>
+      <ul class="list stagger">
+        {% for s in active_sessions %}
+          <li class="list-item card-hover">
+            <div class="list-item-main">
+              <div class="list-item-title">
+                <span class="font-mono font-semibold text-primary">{{ s.course.code }}</span>
+                <span>{{ s.course.title }}</span>
+              </div>
+              <div class="list-item-meta">
+                Time: {{ s.starts_at.strftime('%H:%M UTC') }} - {{ s.ends_at.strftime('%H:%M UTC') }}
+                {% if s.checkin_code %}
+                  &middot; Code: <span class="font-mono font-semibold text-primary">{{ s.checkin_code }}</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="list-item-side">
+              <a href="/admin/sessions?course_id={{ s.course.id }}" class="btn btn-outline btn-sm">Inspect</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {# Courses Overview and Recent Users: each on its own full-width row, equal size #}
+  <div class="stack stagger">
+    <section class="card card-panel">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Courses Overview</h2>
+          <p class="card-subtitle">Recent courses in the system</p>
+        </div>
+        <div class="card-actions">
+          <a href="/admin/courses" class="btn btn-ghost btn-sm">
+            <span>View all courses</span>
+            {{ icons.icon("chevron-right", size=14) }}
+          </a>
+        </div>
+      </div>
+      {% if recent_courses %}
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">Code</th>
+                <th scope="col">Title</th>
+                <th scope="col">Min %</th>
+                <th scope="col">Status</th>
+                <th scope="col" class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in recent_courses %}
+                <tr>
+                  <td><span class="font-mono font-semibold text-primary">{{ c.code }}</span></td>
+                  <td class="cell-primary">{{ c.title }}</td>
+                  <td class="cell-muted">{{ c.min_attendance_pct }}%</td>
+                  <td>
+                    {% if c.is_active %}
+                      <span class="badge badge-present">Active</span>
+                    {% else %}
+                      <span class="badge badge-neutral">Inactive</span>
+                    {% endif %}
+                  </td>
+                  <td class="cell-actions">
+                    <a href="/admin/courses/{{ c.id }}/enrollments" class="btn btn-ghost btn-sm">Enrollments</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="card-body">
+          {{ ui.empty_state("No courses created yet.", icon="book") }}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card card-panel">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Recent Users</h2>
+          <p class="card-subtitle">Latest accounts on the platform</p>
+        </div>
+        <div class="card-actions">
+          <a href="/admin/users" class="btn btn-ghost btn-sm">
+            <span>View all users</span>
+            {{ icons.icon("chevron-right", size=14) }}
+          </a>
+        </div>
+      </div>
+      {% if recent_users %}
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Role</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in recent_users %}
+                {% set role_name = (u.role.value if u.role.value is defined else u.role)|string|lower %}
+                <tr>
+                  <td class="cell-primary">
+                    <div class="flex items-center gap-2">
+                      <span class="avatar" aria-hidden="true">{{ (u.full_name or u.email)[0]|upper }}</span>
+                      <span>{{ u.full_name or '—' }}</span>
+                    </div>
+                  </td>
+                  <td class="cell-muted text-xs">{{ u.email }}</td>
+                  <td>
+                    <span class="badge {% if role_name == 'admin' %}badge-primary{% elif role_name == 'teacher' %}badge-warning{% else %}badge-neutral{% endif %} capitalize">{{ role_name }}</span>
+                  </td>
+                  <td>
+                    {% if u.is_active %}
+                      <span class="badge badge-present">Active</span>
+                    {% else %}
+                      <span class="badge badge-neutral">Inactive</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="card-body">
+          {{ ui.empty_state("No users found.", icon="users") }}
+        </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import (
     ConflictError,
@@ -25,6 +26,7 @@ from app.repositories.enrollment_repository import (
     enrollment_repository,
 )
 from app.repositories.session_repository import SessionRepository, session_repository
+from app.repositories.user_repository import UserRepository, user_repository
 from app.schemas.attendance import (
     AttendanceRead,
     ManualMarkItem,
@@ -44,11 +46,13 @@ class AttendanceService:
         session_repo: SessionRepository | None = None,
         course_repo: CourseRepository | None = None,
         enrollment_repo: EnrollmentRepository | None = None,
+        user_repo: UserRepository | None = None,
     ) -> None:
         self.attendance_repo = attendance_repo or attendance_repository
         self.session_repo = session_repo or session_repository
         self.course_repo = course_repo or course_repository
         self.enrollment_repo = enrollment_repo or enrollment_repository
+        self.user_repo = user_repo or user_repository
 
     async def check_in(
         self,
@@ -379,6 +383,43 @@ class AttendanceService:
             for s_id in absent_student_ids
         ]
         return await self.attendance_repo.create_many(session, absent_records)
+
+    async def check_in_student(
+        self,
+        session: AsyncSession,
+        session_id: UUID,
+        student_id: UUID,
+        code: str,
+        clock: Clock | None = None,
+    ) -> AttendanceRecord:
+        student = await self.user_repo.get_by_id(session, student_id)
+        if student is None:
+            raise NotFoundError("Student not found", code="STUDENT_NOT_FOUND")
+        return await self.check_in(
+            session=session,
+            student=student,
+            session_id=session_id,
+            code=code,
+            clock=clock,
+        )
+
+    async def get_active_sessions_for_student(
+        self,
+        session: AsyncSession,
+        student_id: UUID,
+    ) -> list[ClassSession]:
+        stmt = (
+            select(ClassSession)
+            .join(Enrollment, Enrollment.course_id == ClassSession.course_id)
+            .where(
+                Enrollment.student_id == student_id,
+                ClassSession.status == SessionStatus.OPEN.value,
+            )
+            .options(selectinload(ClassSession.course))
+            .order_by(ClassSession.starts_at.asc(), ClassSession.id.asc())
+        )
+        res = await session.execute(stmt)
+        return list(res.scalars().all())
 
 
 attendance_service = AttendanceService()

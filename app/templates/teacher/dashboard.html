@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+{% import "teacher/partials/_macros.html" as tm %}
+
+{% block title %}Teacher Dashboard — Attendance Monitoring System{% endblock %}
+
+{% block content %}
+<div class="page stagger">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Welcome back, {{ user.full_name or user.email }}</h1>
+      <p class="page-subtitle">Monitor live sessions, review course rosters, and track student attendance.</p>
+    </div>
+    <div class="page-actions">
+      <a href="/teacher/reports" class="btn btn-secondary btn-sm">
+        {{ icons.icon("download", size=16) }}
+        <span>Reports</span>
+      </a>
+      <a href="/teacher/sessions" class="btn btn-primary btn-sm">
+        {{ icons.icon("calendar", size=16) }}
+        <span>Manage Sessions</span>
+      </a>
+    </div>
+  </header>
+
+  {# Active live sessions #}
+  {% for s in active_sessions %}
+    <section class="card card-hover">
+      <div class="card-header">
+        <div>
+          <div class="cluster">
+            {{ tm.session_status_badge(s.status) }}
+            <h2 class="card-title">{{ s.course.code }} — {{ s.course.title }}</h2>
+          </div>
+          <p class="card-subtitle">
+            {{ s.starts_at.strftime('%H:%M') }} – {{ s.ends_at.strftime('%H:%M UTC') }}
+            &middot; Late after +{{ s.late_after_minutes }} min
+          </p>
+        </div>
+        <div class="card-actions">
+          <a href="/teacher/sessions/{{ s.id }}" class="btn btn-primary btn-sm">
+            {{ icons.icon("clock", size=16) }}
+            <span>Go to Live Session</span>
+          </a>
+        </div>
+      </div>
+      {% if s.checkin_code %}
+        <div class="card-body">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="stack-sm">
+              <span class="section-title">Check-in code</span>
+              <span class="code-display">{{ s.checkin_code }}</span>
+            </div>
+            {% if s.code_expires_at %}
+              <div class="stack-sm text-right">
+                <span class="section-title">Expires in</span>
+                <span class="countdown-timer font-mono text-xl font-semibold" data-expires-at="{{ s.code_expires_at.isoformat() }}">--:--</span>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  {% endfor %}
+
+  <div class="stat-grid stagger">
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Active Courses</span>
+        <span class="stat-icon">{{ icons.icon("book", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ total_courses }}</div>
+      <div class="stat-footer"><span>Assigned to you</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Total Enrolled</span>
+        <span class="stat-icon">{{ icons.icon("users", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ total_students }}</div>
+      <div class="stat-footer"><span>Unique students</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Live Sessions</span>
+        <span class="stat-icon">{{ icons.icon("clock", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ active_sessions|length }}</div>
+      <div class="stat-footer">
+        {% if active_sessions %}<span class="pulse-dot" aria-hidden="true"></span>{% endif %}
+        <span>Open for check-in</span>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-header">
+        <span class="stat-label">Upcoming Sessions</span>
+        <span class="stat-icon">{{ icons.icon("calendar", size=20) }}</span>
+      </div>
+      <div class="stat-value count-up">{{ upcoming_sessions|length }}</div>
+      <div class="stat-footer"><span>Scheduled next</span></div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Upcoming Sessions</h2>
+          <p class="card-subtitle">Sessions scheduled to start soon</p>
+        </div>
+        <div class="card-actions">
+          <a href="/teacher/sessions" class="btn btn-ghost btn-sm">View all</a>
+        </div>
+      </div>
+      {% if upcoming_sessions %}
+        <ul class="list stagger">
+          {% for s in upcoming_sessions %}
+            <li class="list-item card-hover">
+              <div class="list-item-main">
+                <span class="list-item-title"><span class="font-mono">{{ s.course.code }}</span> · {{ s.course.title }}</span>
+                <span class="list-item-meta">
+                  {{ s.starts_at.strftime('%a, %b %d, %Y') }} · {{ s.starts_at.strftime('%H:%M') }} – {{ s.ends_at.strftime('%H:%M UTC') }}
+                </span>
+              </div>
+              <div class="list-item-side">
+                {{ tm.session_status_badge(s.status) }}
+                <a href="/teacher/sessions/{{ s.id }}" class="btn btn-outline btn-sm">Open</a>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="card-body">
+          {{ ui.empty_state("No upcoming sessions", description="Schedule a session to get started.", icon="calendar", action_text="Schedule a Session", action_url="/teacher/sessions") }}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">My Courses</h2>
+          <p class="card-subtitle">Courses currently taught by you</p>
+        </div>
+        <div class="card-actions">
+          <a href="/teacher/courses" class="btn btn-ghost btn-sm">View all</a>
+        </div>
+      </div>
+      {% if courses %}
+        <ul class="list stagger">
+          {% for c in courses %}
+            <li class="list-item card-hover">
+              <div class="list-item-main">
+                <a href="/teacher/courses/{{ c.id }}" class="list-item-title"><span class="font-mono">{{ c.code }}</span> · {{ c.title }}</a>
+                <span class="list-item-meta">Minimum attendance {{ c.min_attendance_pct }}%</span>
+                <div class="progress mt-1" role="progressbar" aria-label="Minimum attendance threshold" aria-valuenow="{{ c.min_attendance_pct }}" aria-valuemin="0" aria-valuemax="100">
+                  <div class="progress-bar progress-bar-primary animate-fill" data-value="{{ c.min_attendance_pct }}"></div>
+                </div>
+              </div>
+              <div class="list-item-side">
+                <a href="/teacher/courses/{{ c.id }}" class="btn btn-outline btn-sm">View</a>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="card-body">
+          {{ ui.empty_state("No courses assigned", description="Courses assigned to your account will appear here.", icon="book") }}
+        </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

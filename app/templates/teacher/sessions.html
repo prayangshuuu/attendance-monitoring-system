@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% import "components/icons.html" as icons %}
+{% import "components/components.html" as ui %}
+{% import "teacher/partials/_macros.html" as tm %}
+
+{% block title %}Session Management — Teacher Portal{% endblock %}
+
+{% block content %}
+<div class="page animate-in">
+  <header class="page-header">
+    <div class="page-header-text">
+      <h1 class="page-title">Class Sessions</h1>
+      <p class="page-subtitle">Schedule single sessions, generate recurring schedules, and manage past classes.</p>
+    </div>
+  </header>
+
+  {% if error %}
+    {{ ui.alert(error, variant="danger", dismissible=false) }}
+  {% endif %}
+  {% if success %}
+    {{ ui.alert(success, variant="success", dismissible=false) }}
+  {% endif %}
+
+  <div class="grid-2">
+    {# Single session #}
+    <section class="card" id="schedule-single">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Schedule New Session</h2>
+          <p class="card-subtitle">Create a single class session for a specific date and time</p>
+        </div>
+      </div>
+      <form method="post" action="/teacher/sessions">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+        <div class="card-body stack">
+          <div class="form-group">
+            <label for="single_course_id" class="form-label required">Course</label>
+            <select id="single_course_id" name="course_id" class="form-select" required>
+              <option value="" disabled {% if not selected_course_id %}selected{% endif %}>Select course...</option>
+              {% for c in courses %}
+                <option value="{{ c.id }}" {% if selected_course_id and selected_course_id|string == c.id|string %}selected{% endif %}>
+                  {{ c.code }} — {{ c.title }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="session_date" class="form-label required">Date</label>
+              <input type="date" id="session_date" name="date" class="form-input" required value="{{ default_date or '' }}" />
+            </div>
+            <div class="form-group">
+              <label for="session_start_time" class="form-label required">Start Time (UTC)</label>
+              <input type="time" id="session_start_time" name="start_time" class="form-input" required value="09:00" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="session_duration" class="form-label required">Duration (minutes)</label>
+              <input type="number" id="session_duration" name="duration_minutes" class="form-input" required value="60" min="15" max="360" />
+            </div>
+            <div class="form-group">
+              <label for="late_after_minutes" class="form-label required">Late Threshold (minutes)</label>
+              <input type="number" id="late_after_minutes" name="late_after_minutes" class="form-input" required value="10" min="0" max="60" />
+              <span class="form-hint">Check-ins after this many minutes are marked Late.</span>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer form-actions">
+          <button type="submit" class="btn btn-primary">
+            {{ icons.icon("calendar", size=16) }}
+            <span>Schedule Session</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    {# Recurring sessions #}
+    <section class="card" id="schedule-recurring">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Generate Recurring Schedule</h2>
+          <p class="card-subtitle">Create weekly sessions across a date range</p>
+        </div>
+      </div>
+      <form method="post" action="/teacher/sessions/recurring">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token or '' }}">
+        <input type="hidden" name="timezone" value="UTC" />
+        <input type="hidden" name="late_after_minutes" value="10" />
+        <div class="card-body stack">
+          <div class="form-group">
+            <label for="rec_course_id" class="form-label required">Course</label>
+            <select id="rec_course_id" name="course_id" class="form-select" required>
+              <option value="" disabled {% if not selected_course_id %}selected{% endif %}>Select course...</option>
+              {% for c in courses %}
+                <option value="{{ c.id }}" {% if selected_course_id and selected_course_id|string == c.id|string %}selected{% endif %}>
+                  {{ c.code }} — {{ c.title }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="rec_weekday" class="form-label required">Weekday</label>
+            <select id="rec_weekday" name="weekday" class="form-select" required>
+              <option value="0">Monday</option>
+              <option value="1">Tuesday</option>
+              <option value="2">Wednesday</option>
+              <option value="3">Thursday</option>
+              <option value="4">Friday</option>
+              <option value="5">Saturday</option>
+              <option value="6">Sunday</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="rec_start_time" class="form-label required">Start Time (UTC)</label>
+              <input type="time" id="rec_start_time" name="start_time" class="form-input" required value="10:00" />
+            </div>
+            <div class="form-group">
+              <label for="rec_end_time" class="form-label required">End Time (UTC)</label>
+              <input type="time" id="rec_end_time" name="end_time" class="form-input" required value="11:30" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="rec_from_date" class="form-label required">From Date</label>
+              <input type="date" id="rec_from_date" name="from_date" class="form-input" required value="{{ default_date or '' }}" />
+            </div>
+            <div class="form-group">
+              <label for="rec_to_date" class="form-label required">To Date</label>
+              <input type="date" id="rec_to_date" name="to_date" class="form-input" required value="{{ default_to_date or '' }}" />
+            </div>
+          </div>
+        </div>
+        <div class="card-footer form-actions">
+          <button type="submit" class="btn btn-secondary">
+            {{ icons.icon("refresh-cw", size=16) }}
+            <span>Generate Sessions</span>
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  {# History #}
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title">Sessions History &amp; Schedule</h2>
+        <p class="card-subtitle">{{ total_sessions }} session{{ '' if total_sessions == 1 else 's' }} found</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="get" action="/teacher/sessions" class="toolbar">
+        <select name="course_id" class="form-select" aria-label="Filter by course">
+          <option value="">All courses</option>
+          {% for c in courses %}
+            <option value="{{ c.id }}" {% if selected_course_id and selected_course_id|string == c.id|string %}selected{% endif %}>
+              {{ c.code }}
+            </option>
+          {% endfor %}
+        </select>
+        <select name="status" class="form-select" aria-label="Filter by status">
+          <option value="" {% if not current_status %}selected{% endif %}>All statuses</option>
+          <option value="scheduled" {% if current_status == 'scheduled' %}selected{% endif %}>Scheduled</option>
+          <option value="open" {% if current_status == 'open' %}selected{% endif %}>Open (Live)</option>
+          <option value="closed" {% if current_status == 'closed' %}selected{% endif %}>Closed</option>
+          <option value="cancelled" {% if current_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm">
+          {{ icons.icon("search", size=16) }}
+          <span>Filter</span>
+        </button>
+        {% if selected_course_id or current_status %}
+          <a href="/teacher/sessions" class="btn btn-ghost btn-sm">Reset</a>
+        {% endif %}
+      </form>
+    </div>
+
+    {% if sessions %}
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Course</th>
+              <th scope="col">Date &amp; Time (UTC)</th>
+              <th scope="col">Duration</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sessions %}
+              {% set dur = ((s.ends_at - s.starts_at).total_seconds() / 60)|int %}
+              <tr>
+                <td class="cell-primary" data-label="Course">
+                  <span class="font-mono font-semibold text-primary">{{ s.course.code }}</span>
+                  <div class="text-xs text-muted">{{ s.course.title }}</div>
+                </td>
+                <td data-label="Date &amp; Time (UTC)">
+                  <div class="font-medium">{{ s.starts_at.strftime('%a, %b %d, %Y') }}</div>
+                  <div class="text-xs text-muted">{{ s.starts_at.strftime('%H:%M') }} – {{ s.ends_at.strftime('%H:%M UTC') }}</div>
+                </td>
+                <td class="cell-muted" data-label="Duration">{{ dur }} min</td>
+                <td data-label="Status">{{ tm.session_status_badge(s.status) }}</td>
+                <td class="cell-actions" data-label="Actions">
+                  {% if s.status == 'open' %}
+                    <a href="/teacher/sessions/{{ s.id }}" class="btn btn-primary btn-sm">
+                      {{ icons.icon("clock", size=14) }}
+                      <span>Go Live</span>
+                    </a>
+                  {% elif s.status == 'scheduled' %}
+                    <a href="/teacher/sessions/{{ s.id }}" class="btn btn-secondary btn-sm">Start Session</a>
+                  {% else %}
+                    <a href="/teacher/sessions/{{ s.id }}" class="btn btn-outline btn-sm">Roster</a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if total_pages > 1 %}
+        <div class="card-footer">
+          {{ ui.pagination(current_page=current_page, total_pages=total_pages, total_items=total_sessions, base_url="/teacher/sessions", query=pagination_query|default("")) }}
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="card-body">
+        {{ ui.empty_state("No class sessions found", description="Schedule a single session or generate a recurring schedule using the forms above.", icon="calendar") }}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

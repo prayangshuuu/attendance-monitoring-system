@@ -1,0 +1,41 @@
+{# Shared presentational macros for the teacher portal templates. #}
+{% import "components/icons.html" as icons %}
+
+{% macro session_status_badge(status) %}
+  {% set st = (status.value if status.value is defined else status)|string|lower %}
+  {% if st == 'open' %}
+    <span class="badge badge-present"><span class="pulse-dot" aria-hidden="true"></span> LIVE NOW</span>
+  {% elif st == 'scheduled' %}
+    <span class="badge badge-neutral">Scheduled</span>
+  {% elif st == 'closed' %}
+    <span class="badge badge-excused">Closed</span>
+  {% elif st == 'cancelled' %}
+    <span class="badge badge-absent">Cancelled</span>
+  {% else %}
+    <span class="badge badge-neutral capitalize">{{ st }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro attendance_status_badge(status) %}
+  {% if status %}
+    {% set st = (status.value if status.value is defined else status)|string|lower %}
+    {% if st == 'present' %}
+      <span class="badge badge-present">{{ icons.icon("check", size=12) }} Present</span>
+    {% elif st == 'late' %}
+      <span class="badge badge-late">{{ icons.icon("clock", size=12) }} Late</span>
+    {% elif st == 'absent' %}
+      <span class="badge badge-absent">{{ icons.icon("x", size=12) }} Absent</span>
+    {% elif st == 'excused' %}
+      <span class="badge badge-excused">{{ icons.icon("info", size=12) }} Excused</span>
+    {% else %}
+      <span class="badge badge-neutral">{{ st|capitalize }}</span>
+    {% endif %}
+  {% else %}
+    <span class="badge badge-neutral">Not Checked In</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro initials(name) -%}
+  {%- set words = ((name or '?')|string).split() -%}
+  {%- for w in words[:2] %}{{ w[:1]|upper }}{% endfor -%}
+{%- endmacro %}

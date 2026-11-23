@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] | str = ["http://localhost:3000"]
     FIRST_ADMIN_EMAIL: str = "admin@example.com"
     FIRST_ADMIN_PASSWORD: str = "ChangeMe123!"
+    COOKIE_SECURE: bool = False
+    CSRF_SECRET_KEY: str = "change-me-csrf-secret-key-attendance-system"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
