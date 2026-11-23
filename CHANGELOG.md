@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.0
+
+- **Server-Rendered Web Portals**: Interactive, responsive Jinja2 and HTMX 2.x web application providing dedicated portals for Administrators (`/admin`), Teachers (`/teacher`), and Students (`/student`) with zero Node.js/npm dependencies.
+- **Admin Portal**: Institutional analytics dashboard, user CRUD management with atomic bulk CSV user import, course-teacher assignment, student enrollment management, and system-wide session oversight.
+- **Teacher Portal**: Course session scheduling, recurring session generator, live session monitor with dynamic check-in code and countdown timer, live attendance roster polling, and manual attendance marking overrides.
+- **Student Portal**: Real-time personal attendance summary with overall attendance percentage, low-attendance at-risk warning badges, and 6-character live check-in with instant feedback.
+- **Session Authentication & Web Security**: Secure HttpOnly cookies (`SameSite=Lax`), double-submit cookie CSRF protection on mutating routes, and Content Security Policy (`CSP`) updates.
+- **Packaging & Release Pipeline**: Hatchling packaging build configuration for wheel and sdist distributions, automated GitHub Container Registry (GHCR) package publishing workflow, and release automation.
+
 ## 1.0.0
 
 - **Authentication & RBAC**: JWT access and refresh token authentication with Argon2 password hashing via `pwdlib` and strict role-based access control (`admin`, `teacher`, `student`).
